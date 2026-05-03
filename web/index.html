@@ -9,16 +9,16 @@
     *{box-sizing:border-box} body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--text)}
     header{padding:16px 24px;background:var(--card);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px;position:sticky;top:0;z-index:10}
     h1{font-size:20px;margin:0;color:var(--brand)} h2{font-size:18px;margin:0 0 12px} h3{font-size:15px;margin:14px 0 6px;color:#f5f5f5}
-    .container{padding:22px;max-width:1500px;margin:0 auto}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+    .container{padding:22px;max-width:1500px;margin:0 auto}.app-shell{display:grid;grid-template-columns:260px minmax(0,1fr);gap:20px;padding:22px;max-width:1680px;margin:0 auto}.main-content{min-width:0}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
     label{display:block;font-size:12px;color:#b7bdc6;margin-top:12px} input,textarea,select{width:100%;background:#070a0d;color:var(--text);border:1px solid #3c4450;border-radius:9px;padding:10px;margin-top:5px;font-size:14px}
     input[type=checkbox]{width:auto;margin-right:6px} textarea{min-height:210px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.small-textarea{min-height:90px}.models-textarea{min-height:220px}
     button{background:var(--brand);color:#111;border:0;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer;white-space:nowrap}button.secondary{background:var(--line);color:var(--text)}button.danger{background:#d64545;color:white}button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}button:disabled{opacity:.55;cursor:not-allowed}
     .row{display:flex;gap:10px;align-items:flex-end}.row>*{flex:1}.row.tight{align-items:center}.row.tight>*{flex:initial}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
     .muted{color:var(--muted);font-size:12px;line-height:1.45}.pill{display:inline-block;padding:4px 9px;border-radius:999px;background:var(--line);margin:2px 6px 2px 0;font-size:12px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
-    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tab-btn{background:var(--panel);color:var(--text);border:1px solid var(--line)}.tab-btn.active{background:var(--brand);color:#111;border-color:var(--brand)}.tab{display:none}.tab.active{display:block}
+    .sidebar{position:sticky;top:74px;height:calc(100vh - 96px);background:linear-gradient(180deg,#1b202a,#12161e);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.24)}.side-brand{display:flex;gap:12px;align-items:center;padding:6px 4px 16px;border-bottom:1px solid var(--line);margin-bottom:12px}.logo{width:38px;height:38px;border-radius:12px;background:var(--brand);color:#111;display:grid;place-items:center;font-weight:900}.side-title{font-weight:900}.side-sub{font-size:12px;color:var(--muted);margin-top:2px}.side-nav{display:flex;flex-direction:column;gap:8px}.side-btn{width:100%;display:grid;grid-template-columns:26px 1fr;gap:10px;text-align:left;align-items:center;background:transparent;color:var(--text);border:1px solid transparent;border-radius:12px;padding:11px 10px;font-weight:800}.side-btn small{grid-column:2;color:var(--muted);font-weight:500;margin-top:-3px}.side-btn.active{background:rgba(240,185,11,.13);border-color:rgba(240,185,11,.45);color:var(--brand)}.side-footer{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}.tab{display:none}.tab.active{display:block}
     pre{white-space:pre-wrap;background:#070a0d;border:1px solid var(--line);border-radius:9px;padding:12px;max-height:340px;overflow:auto}.run{border-bottom:1px solid var(--line);padding:10px 0}.run:last-child{border-bottom:0}.post{font-size:15px;line-height:1.6;color:#f5f5f5;margin-top:6px}.hint{border-left:3px solid var(--brand);padding-left:10px}.login{min-height:70vh;display:grid;place-items:center}.login .card{max-width:460px;width:100%}
-    .metric{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.metric .num{font-size:28px;font-weight:900;margin-top:6px}.heatmap{display:grid;grid-template-columns:repeat(21,1fr);gap:5px}.cell{height:28px;border-radius:6px;background:#202733;border:1px solid #2c3544;position:relative}.cell.l1{background:#1f5138}.cell.l2{background:#0b7a4b}.cell.l3{background:#0ecb81}.cell.err{outline:2px solid var(--bad)}.cell span{display:none;position:absolute;left:0;bottom:32px;background:#111;color:#fff;border:1px solid var(--line);border-radius:6px;padding:5px;white-space:nowrap;font-size:12px;z-index:3}.cell:hover span{display:block}.split{display:grid;grid-template-columns:380px 1fr;gap:18px}
-    @media(max-width:1050px){.split,.grid4,.grid3,.grid2{grid-template-columns:1fr}.row{flex-wrap:wrap}.heatmap{grid-template-columns:repeat(7,1fr)}}
+    .metric{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.metric .num{font-size:28px;font-weight:900;margin-top:6px}.heatmap{display:grid;gap:5px}.heatmap.daily{grid-template-columns:repeat(21,1fr)}.heatmap.hourly{grid-template-columns:repeat(24,1fr)}.cell{min-height:34px;border-radius:7px;background:#202733;border:1px solid #2c3544;position:relative;display:flex;align-items:center;justify-content:center;font-size:11px;color:#d1d5db}.cell.l1{background:#21432f}.cell.l2{background:#1f6b42}.cell.l3{background:#0b8f55}.cell.l4{background:#0ecb81;color:#07130d;font-weight:900}.cell.err{outline:2px solid var(--bad)}.cell span{display:none;position:absolute;left:0;bottom:40px;background:#111;color:#fff;border:1px solid var(--line);border-radius:6px;padding:6px;white-space:nowrap;font-size:12px;z-index:3;text-align:left}.cell:hover span{display:block}.split{display:grid;grid-template-columns:380px 1fr;gap:18px}
+    @media(max-width:1050px){.app-shell{grid-template-columns:1fr;padding:14px}.sidebar{position:static;height:auto}.side-nav{display:grid;grid-template-columns:1fr 1fr}.side-btn small{display:none}.split,.grid4,.grid3,.grid2{grid-template-columns:1fr}.row{flex-wrap:wrap}.heatmap.daily{grid-template-columns:repeat(7,1fr)}.heatmap.hourly{grid-template-columns:repeat(8,1fr)}}
   </style>
 </head>
 <body>
@@ -35,16 +35,26 @@
   </section>
 </div>
 
-<div id="appView" class="container" style="display:none">
-  <nav class="tabs">
-    <button class="tab-btn active" onclick="showTab('overview')">概览</button>
-    <button class="tab-btn" onclick="showTab('prompt')">Prompt</button>
-    <button class="tab-btn" onclick="showTab('models')">模型渠道</button>
-    <button class="tab-btn" onclick="showTab('notify')">通知 / 密钥</button>
-    <button class="tab-btn" onclick="showTab('settings')">任务设置</button>
-    <button class="tab-btn" onclick="showTab('runs')">运行记录</button>
-  </nav>
-
+<div id="appView" class="app-shell" style="display:none">
+  <aside class="sidebar">
+    <div class="side-brand">
+      <div class="logo">B</div>
+      <div><div class="side-title">Square Autopost</div><div class="side-sub">自托管发帖后台</div></div>
+    </div>
+    <nav class="side-nav">
+      <button class="side-btn active" data-tab="overview" onclick="showTab('overview')"><span>📊</span><b>概览</b><small>运行状态与热力图</small></button>
+      <button class="side-btn" data-tab="prompt" onclick="showTab('prompt')"><span>✍️</span><b>Prompt</b><small>编辑生成策略</small></button>
+      <button class="side-btn" data-tab="models" onclick="showTab('models')"><span>🧠</span><b>模型渠道</b><small>中转站与优先级</small></button>
+      <button class="side-btn" data-tab="notify" onclick="showTab('notify')"><span>🔔</span><b>通知 / 密钥</b><small>TG 与发布 Key</small></button>
+      <button class="side-btn" data-tab="settings" onclick="showTab('settings')"><span>⚙️</span><b>任务设置</b><small>频率、额度、模式</small></button>
+      <button class="side-btn" data-tab="runs" onclick="showTab('runs')"><span>🧾</span><b>运行记录</b><small>最近输出与错误</small></button>
+    </nav>
+    <div class="side-footer">
+      <div class="muted">当前站点</div>
+      <div class="pill" id="sideHost">-</div>
+    </div>
+  </aside>
+  <main class="main-content">
   <section id="tab-overview" class="tab active">
     <div class="grid4">
       <div class="metric"><div class="muted">发布模式</div><div class="num" id="mMode">-</div></div>
@@ -60,8 +70,11 @@
     </div>
     <div class="card">
       <h2>发帖热力图</h2>
-      <p class="muted">最近 21 天的 preview / published / error 分布；红框表示当天有失败。</p>
-      <div id="heatmap" class="heatmap"></div>
+      <p class="muted">日历按每日上限着色（默认 100 条/天，可在“任务设置”的每日上限调整）；红框表示当天有失败。preview 不消耗 Binance 发帖额度，但会单独显示。</p>
+      <h3>最近 21 天 · 每日额度</h3>
+      <div id="heatmap" class="heatmap daily"></div>
+      <h3>今天 · 24 小时分布</h3>
+      <div id="hourHeatmap" class="heatmap hourly"></div>
     </div>
     <div class="card"><h2>运行结果</h2><pre id="output">等待操作...</pre></div>
   </section>
@@ -132,12 +145,14 @@
   <section id="tab-runs" class="tab">
     <section class="card"><h2>最近运行</h2><div id="runs"></div></section>
   </section>
+  </main>
 </div>
 
 <script>
 const $=id=>document.getElementById(id);
 let prompts=[]; let currentSettings={}; let llmConfig={channels:[],maxFallbackModels:10}; let selectedChannelId=''; let runs=[];
 const tokenStore='adminToken';
+$('sideHost').textContent=location.host||'localhost';
 $('loginToken').value=localStorage.getItem(tokenStore)||'';
 function token(){return localStorage.getItem(tokenStore)||$('loginToken').value||''}
 function headers(){const t=token();return {'Content-Type':'application/json',...(t?{Authorization:'Bearer '+t}:{})}}
@@ -147,10 +162,10 @@ function llmOut(x){$('llmOutput').textContent=typeof x==='string'?x:JSON.stringi
 function notifyOut(x){$('notifyOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
 function secretsOut(x){$('secretsOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
 function showLogin(msg='请输入 Admin Token 登录'){ $('loginView').style.display='grid'; $('appView').style.display='none'; $('logoutBtn').style.display='none'; $('loginMsg').textContent=msg; }
-function showApp(){ $('loginView').style.display='none'; $('appView').style.display='block'; $('logoutBtn').style.display='inline-block'; }
-async function login(){try{localStorage.setItem(tokenStore,$('loginToken').value.trim());const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)throw new Error('Admin Token 不正确');showApp();await loadAll()}catch(e){showLogin('登录失败：'+e.message)}}
+function showApp(){ $('loginView').style.display='none'; $('appView').style.display='grid'; $('logoutBtn').style.display='inline-block'; }
+async function login(){try{localStorage.setItem(tokenStore,$('loginToken').value.trim());const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)throw new Error('Admin Token 不正确');showApp();await loadAll();showTab(localStorage.getItem('activeTab')||'overview')}catch(e){showLogin('登录失败：'+e.message)}}
 function logout(){localStorage.removeItem(tokenStore);showLogin('已退出。')}
-function showTab(name){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));$('tab-'+name).classList.add('active');[...document.querySelectorAll('.tab-btn')].find(b=>b.textContent.includes({overview:'概览',prompt:'Prompt',models:'模型',notify:'通知',settings:'任务',runs:'运行'}[name]))?.classList.add('active')}
+function showTab(name){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.side-btn').forEach(x=>x.classList.remove('active'));$('tab-'+name).classList.add('active');document.querySelector(`.side-btn[data-tab="${name}"]`)?.classList.add('active');localStorage.setItem('activeTab',name)}
 function linesToModels(text){return String(text||'').split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean).map((id,idx)=>({id,priority:idx+1,enabled:true}))}
 function modelsToLines(models){return (models||[]).filter(m=>m.enabled!==false).sort((a,b)=>(a.priority||1)-(b.priority||1)).map(m=>m.id).join('\n')}
 async function loadAll(){try{await loadStatus();await loadPrompts();await loadLlmConfig(true);await loadRuns();showApp()}catch(e){if(/unauthorized|Admin Token|Cannot read/.test(e.message))showLogin('请登录：'+e.message);else out('加载失败：'+e.message)}}
@@ -187,10 +202,11 @@ async function marketPack(){try{out('获取中...');out(await api('/api/market-p
 async function loadRuns(){const j=await api('/api/runs?limit=200');runs=j.runs||[];renderRuns();renderHeatmap()}
 function renderRuns(){$('runs').innerHTML=runs.slice(0,80).map(r=>`<div class="run"><div><span class="pill ${r.status==='published'?'ok':r.status==='error'?'bad':''}">${escapeHtml(r.status)}</span><span class="muted">${escapeHtml(r.createdAt||'')} · ${escapeHtml(r.source||'')} · ${escapeHtml([r.lead,r.peer,r.anchor].filter(Boolean).join('/'))}${r.model?` · ${escapeHtml(r.channelName||r.channelId||'')} / ${escapeHtml(r.model)}`:''}</span></div>${r.postText?`<div class="post">${escapeHtml(r.postText)}</div>`:''}${r.url?`<a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.url)}</a>`:''}${r.error?`<div class="bad">${escapeHtml(r.error)}</div>`:''}</div>`).join('')||'<p class="muted">暂无运行记录。</p>'}
 function dateKey(d){const z=new Date(d);return `${z.getFullYear()}-${String(z.getMonth()+1).padStart(2,'0')}-${String(z.getDate()).padStart(2,'0')}`}
-function renderHeatmap(){const map={};for(const r of runs){if(!r.createdAt)continue;const k=dateKey(r.createdAt);map[k]??={total:0,error:0,published:0,preview:0};map[k].total++;if(r.status==='error')map[k].error++;if(r.status==='published')map[k].published++;if(r.status==='preview')map[k].preview++}const days=[];for(let i=20;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=dateKey(d);const v=map[k]||{total:0,error:0,published:0,preview:0};const level=v.total>=5?'l3':v.total>=2?'l2':v.total>=1?'l1':'';days.push(`<div class="cell ${level} ${v.error?'err':''}"><span>${k}<br>总计 ${v.total}<br>预览 ${v.preview} / 发布 ${v.published} / 失败 ${v.error}</span></div>`)}$('heatmap').innerHTML=days.join('')}
+function heatLevel(count, limit){const pct=limit>0?count/limit:0;return count<=0?'':pct>=0.75?'l4':pct>=0.5?'l3':pct>=0.25?'l2':'l1'}
+function renderHeatmap(){const dailyLimit=Number(currentSettings.maxDailyPosts||100);const map={};const hourly=Array.from({length:24},()=>({total:0,error:0,published:0,preview:0}));const todayKey=dateKey(new Date());for(const r of runs){if(!r.createdAt)continue;const created=new Date(r.createdAt);const k=dateKey(created);map[k]??={total:0,error:0,published:0,preview:0};map[k].total++;if(r.status==='error')map[k].error++;if(r.status==='published')map[k].published++;if(r.status==='preview')map[k].preview++;if(k===todayKey){const h=created.getHours();hourly[h].total++;if(r.status==='error')hourly[h].error++;if(r.status==='published')hourly[h].published++;if(r.status==='preview')hourly[h].preview++}}const days=[];for(let i=20;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=dateKey(d);const v=map[k]||{total:0,error:0,published:0,preview:0};const quotaCount=v.published||v.preview||v.total;const level=heatLevel(quotaCount,dailyLimit);const label=v.published?`${v.published}/${dailyLimit}`:(v.preview?`${v.preview}预览`:String(v.total||''));days.push(`<div class="cell ${level} ${v.error?'err':''}">${label}<span>${k}<br>发布 ${v.published}/${dailyLimit}<br>预览 ${v.preview}<br>失败 ${v.error}<br>执行总计 ${v.total}</span></div>`)}$('heatmap').innerHTML=days.join('');const maxHour=Math.max(1,...hourly.map(x=>x.total));$('hourHeatmap').innerHTML=hourly.map((v,h)=>{const level=heatLevel(v.total,maxHour);return `<div class="cell ${level} ${v.error?'err':''}">${h}<span>${String(h).padStart(2,'0')}:00-${String(h).padStart(2,'0')}:59<br>执行 ${v.total}<br>发布 ${v.published}<br>预览 ${v.preview}<br>失败 ${v.error}</span></div>`}).join('')}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 setInterval(()=>$('clock').textContent=new Date().toLocaleString(),1000);
-(async()=>{try{const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)return showLogin('请输入 Admin Token 登录');showApp();await loadAll()}catch(e){showLogin('请输入 Admin Token 登录')}})();
+(async()=>{try{const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)return showLogin('请输入 Admin Token 登录');showApp();await loadAll();showTab(localStorage.getItem('activeTab')||'overview')}catch(e){showLogin('请输入 Admin Token 登录')}})();
 </script>
 </body>
 </html>

@@ -6,8 +6,9 @@
 
 - Web 后台编辑 Prompt、启停定时任务、手动预览 / 发布
 - Web 后台登录页：未登录只显示登录框，配置、密钥、运行记录均需 `ADMIN_TOKEN`
+- NewAPI 风格侧边栏后台：概览、Prompt、模型渠道、通知/密钥、任务设置、运行记录分区管理
 - Web 后台配置 OpenAI-compatible 渠道、API Key、拉取 `/models`、测试模型、设置最多 10 个 fallback 优先级
-- 概览页展示发帖热力图、今日额度、LLM / Publisher 状态
+- 概览页展示发帖热力图、今日额度、LLM / Publisher 状态；热力图按每日上限（默认 100）和当天 24 小时分布显示
 - 默认 preview-only：定时任务只生成内容给你看，不真实发帖
 - 通用 Job 配置：Job 名称、说明、语言、风格、Prompt 模板、模型中转站都可配置
 - 定时发布，默认每 20 分钟检查一次
