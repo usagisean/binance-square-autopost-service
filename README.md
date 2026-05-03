@@ -5,7 +5,9 @@
 ## 功能
 
 - Web 后台编辑 Prompt、启停定时任务、手动预览 / 发布
+- Web 后台登录页：未登录只显示登录框，配置、密钥、运行记录均需 `ADMIN_TOKEN`
 - Web 后台配置 OpenAI-compatible 渠道、API Key、拉取 `/models`、测试模型、设置最多 10 个 fallback 优先级
+- 概览页展示发帖热力图、今日额度、LLM / Publisher 状态
 - 默认 preview-only：定时任务只生成内容给你看，不真实发帖
 - 通用 Job 配置：Job 名称、说明、语言、风格、Prompt 模板、模型中转站都可配置
 - 定时发布，默认每 20 分钟检查一次
@@ -14,6 +16,7 @@
 - OpenAI-compatible Chat Completions；也支持 `LLM_PROVIDER=mock` 本地测试
 - Binance Square OpenAPI 发布
 - Telegram 成功/失败通知（可选）
+- Web 后台配置 Telegram Bot Token / Chat ID 并发送测试消息
 - 所有状态存在 `data/`，不依赖数据库
 
 ## 本地启动

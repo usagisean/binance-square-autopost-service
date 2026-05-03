@@ -9,6 +9,7 @@ const { buildMarketPack } = require('./marketPack');
 const { publisherStatus } = require('./publisher');
 const { getJson } = require('./httpClient');
 const { callOpenAIWithCandidate } = require('./generator');
+const { sendTelegram } = require('./telegram');
 
 initStore();
 
@@ -63,9 +64,28 @@ function findLlmChannel(channelId) {
   return { cfg, channel };
 }
 
+function maskedSecrets() {
+  const secrets = getSecrets();
+  return {
+    openaiApiKey: masked(secrets.openaiApiKey),
+    binanceSquareOpenApiKey: masked(secrets.binanceSquareOpenApiKey),
+    telegramBotToken: masked(secrets.telegramBotToken),
+    telegramChatId: secrets.telegramChatId ? 'configured' : '',
+    telegramConfigured: !!(secrets.telegramBotToken && secrets.telegramChatId)
+  };
+}
+
 async function handleApi(req, res, url) {
-  if (url.pathname !== '/api/status' && !requireAuth(req, res)) return;
   if (req.method === 'GET' && url.pathname === '/api/status') {
+    if (config.adminToken && !authorized(req)) {
+      return sendJson(res, 200, {
+        ok: true,
+        app: 'binance-square-autopost-service',
+        time: new Date().toISOString(),
+        authRequired: true,
+        authenticated: false
+      });
+    }
     const llmConfig = getLlmConfig({ revealKeys: false });
     const llmConfigured = llmConfig.channels.some(ch => ch.enabled && ch.hasApiKey && (ch.models || []).some(m => m.enabled !== false));
     return sendJson(res, 200, {
@@ -98,22 +118,22 @@ async function handleApi(req, res, url) {
         })),
         maxFallbackModels: llmConfig.maxFallbackModels
       },
-      authRequired: !!config.adminToken
+      secrets: maskedSecrets(),
+      authRequired: !!config.adminToken,
+      authenticated: true
     });
   }
+  if (!requireAuth(req, res)) return;
   if (req.method === 'GET' && url.pathname === '/api/settings') return sendJson(res, 200, { ok: true, settings: getSettings() });
   if (req.method === 'PUT' && url.pathname === '/api/settings') return sendJson(res, 200, { ok: true, settings: saveSettings(await readBody(req)) });
+  if (req.method === 'GET' && url.pathname === '/api/secrets') return sendJson(res, 200, { ok: true, secrets: maskedSecrets() });
   if (req.method === 'PUT' && url.pathname === '/api/secrets') {
-    const secrets = saveSecrets(await readBody(req));
-    return sendJson(res, 200, {
-      ok: true,
-      secrets: {
-        openaiApiKey: masked(secrets.openaiApiKey),
-        binanceSquareOpenApiKey: masked(secrets.binanceSquareOpenApiKey),
-        telegramBotToken: masked(secrets.telegramBotToken),
-        telegramChatId: secrets.telegramChatId ? 'configured' : ''
-      }
-    });
+    saveSecrets(await readBody(req));
+    return sendJson(res, 200, { ok: true, secrets: maskedSecrets() });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/telegram/test') {
+    const result = await sendTelegram(`✅ Binance Square Autopost Telegram 测试成功\n时间：${new Date().toISOString()}`);
+    return sendJson(res, 200, { ok: true, telegram: result });
   }
   if (req.method === 'GET' && url.pathname === '/api/llm-config') {
     const revealKeys = url.searchParams.get('reveal') === '1';

@@ -5,50 +5,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Binance Square Autopost</title>
   <style>
-    :root{--bg:#0b0e11;--card:#181a20;--line:#2b3139;--text:#eaecef;--muted:#848e9c;--brand:#f0b90b;--ok:#0ecb81;--bad:#f6465d}
+    :root{--bg:#0b0e11;--card:#181a20;--panel:#11151c;--line:#2b3139;--text:#eaecef;--muted:#848e9c;--brand:#f0b90b;--ok:#0ecb81;--bad:#f6465d;--warn:#f59e0b}
     *{box-sizing:border-box} body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--text)}
-    header{padding:18px 24px;background:var(--card);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px}
+    header{padding:16px 24px;background:var(--card);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px;position:sticky;top:0;z-index:10}
     h1{font-size:20px;margin:0;color:var(--brand)} h2{font-size:18px;margin:0 0 12px} h3{font-size:15px;margin:14px 0 6px;color:#f5f5f5}
-    .wrap{padding:22px;display:grid;grid-template-columns:360px 1fr;gap:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:18px}
-    label{display:block;font-size:12px;color:#b7bdc6;margin-top:12px} input,textarea,select{width:100%;background:var(--bg);color:var(--text);border:1px solid #3c4450;border-radius:8px;padding:9px;margin-top:5px}
-    input[type=checkbox]{width:auto;margin-right:6px} textarea{min-height:220px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.small-textarea{min-height:90px}.models-textarea{min-height:220px}
-    .row{display:flex;gap:8px;align-items:flex-end}.row>*{flex:1}.row.tight{align-items:center}.row.tight>*{flex:initial}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px}
-    button{background:var(--brand);color:#111;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;white-space:nowrap}button.secondary{background:var(--line);color:var(--text)}button.danger{background:#d64545;color:white}button:disabled{opacity:.55;cursor:not-allowed}
-    .muted{color:var(--muted);font-size:12px;line-height:1.45}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:var(--line);margin:2px 6px 2px 0}.ok{color:var(--ok)}.bad{color:var(--bad)}
-    pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:340px;overflow:auto}.run{border-bottom:1px solid var(--line);padding:10px 0}.run:last-child{border-bottom:0}.post{font-size:15px;line-height:1.6;color:#f5f5f5;margin-top:6px}.hint{border-left:3px solid var(--brand);padding-left:10px}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    @media(max-width:1050px){.wrap{grid-template-columns:1fr}.grid4,.grid3,.two-col{grid-template-columns:1fr}.row{flex-wrap:wrap}}
+    .container{padding:22px;max-width:1500px;margin:0 auto}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+    label{display:block;font-size:12px;color:#b7bdc6;margin-top:12px} input,textarea,select{width:100%;background:#070a0d;color:var(--text);border:1px solid #3c4450;border-radius:9px;padding:10px;margin-top:5px;font-size:14px}
+    input[type=checkbox]{width:auto;margin-right:6px} textarea{min-height:210px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.small-textarea{min-height:90px}.models-textarea{min-height:220px}
+    button{background:var(--brand);color:#111;border:0;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer;white-space:nowrap}button.secondary{background:var(--line);color:var(--text)}button.danger{background:#d64545;color:white}button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}button:disabled{opacity:.55;cursor:not-allowed}
+    .row{display:flex;gap:10px;align-items:flex-end}.row>*{flex:1}.row.tight{align-items:center}.row.tight>*{flex:initial}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+    .muted{color:var(--muted);font-size:12px;line-height:1.45}.pill{display:inline-block;padding:4px 9px;border-radius:999px;background:var(--line);margin:2px 6px 2px 0;font-size:12px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.tab-btn{background:var(--panel);color:var(--text);border:1px solid var(--line)}.tab-btn.active{background:var(--brand);color:#111;border-color:var(--brand)}.tab{display:none}.tab.active{display:block}
+    pre{white-space:pre-wrap;background:#070a0d;border:1px solid var(--line);border-radius:9px;padding:12px;max-height:340px;overflow:auto}.run{border-bottom:1px solid var(--line);padding:10px 0}.run:last-child{border-bottom:0}.post{font-size:15px;line-height:1.6;color:#f5f5f5;margin-top:6px}.hint{border-left:3px solid var(--brand);padding-left:10px}.login{min-height:70vh;display:grid;place-items:center}.login .card{max-width:460px;width:100%}
+    .metric{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}.metric .num{font-size:28px;font-weight:900;margin-top:6px}.heatmap{display:grid;grid-template-columns:repeat(21,1fr);gap:5px}.cell{height:28px;border-radius:6px;background:#202733;border:1px solid #2c3544;position:relative}.cell.l1{background:#1f5138}.cell.l2{background:#0b7a4b}.cell.l3{background:#0ecb81}.cell.err{outline:2px solid var(--bad)}.cell span{display:none;position:absolute;left:0;bottom:32px;background:#111;color:#fff;border:1px solid var(--line);border-radius:6px;padding:5px;white-space:nowrap;font-size:12px;z-index:3}.cell:hover span{display:block}.split{display:grid;grid-template-columns:380px 1fr;gap:18px}
+    @media(max-width:1050px){.split,.grid4,.grid3,.grid2{grid-template-columns:1fr}.row{flex-wrap:wrap}.heatmap{grid-template-columns:repeat(7,1fr)}}
   </style>
 </head>
 <body>
-<header><h1>Binance Square Autopost</h1><div class="muted" id="clock"></div></header>
-<div class="wrap">
-  <section>
-    <div class="card">
-      <h2>控制台</h2>
-      <label>Admin Token</label><input id="token" placeholder="如果服务配置了 ADMIN_TOKEN，在这里填" />
-      <div style="height:10px"></div>
-      <div id="status" class="muted">加载中...</div>
+<header><h1>Binance Square Autopost</h1><div class="row tight"><span class="muted" id="clock"></span><button class="ghost" id="logoutBtn" onclick="logout()" style="display:none">退出</button></div></header>
 
-      <label>Job 名称</label><input id="jobName" placeholder="例如：Smart Money Autopost">
-      <label>Job 说明</label><textarea id="jobDescription" class="small-textarea" placeholder="这条任务要做什么、面向谁、发什么内容"></textarea>
-      <label>语言</label><input id="language" placeholder="zh-CN / en-US">
-      <label>风格要求</label><textarea id="styleGuide" class="small-textarea" placeholder="短句、交易员视角、不要模板腔..."></textarea>
-      <label><input type="checkbox" id="enabled">启用定时任务</label>
-      <label>发布模式</label><select id="publishMode"><option value="preview">仅生成预览，不真实发帖</option><option value="live">真实发布到 Binance Square</option></select>
-      <div class="row"><div><label>间隔分钟</label><input id="intervalMinutes" type="number" min="1"></div><div><label>每日上限</label><input id="maxDailyPosts" type="number" min="1"></div></div>
-      <div class="row"><div><label>最短字符</label><input id="minPostChars" type="number"></div><div><label>最长字符</label><input id="maxPostChars" type="number"></div></div>
-      <label>LLM Provider</label><select id="llmProvider"><option value="mock">mock 本地测试</option><option value="openai">OpenAI-compatible 渠道配置</option></select>
-      <label>Binance Square Key（留空不修改；仅 live 模式使用）</label><input id="binanceSquareOpenApiKey" type="password" autocomplete="off" placeholder="X-Square-OpenAPI-Key">
-      <label>禁用币种（逗号分隔）</label><input id="bannedSymbols">
-      <div style="height:14px"></div>
-      <div class="row"><button onclick="saveSettings()">保存设置</button><button class="secondary" onclick="loadAll()">刷新</button></div>
-      <div style="height:8px"></div>
-      <div class="row"><button onclick="run('dry-run')">生成预览</button><button class="danger" onclick="run('publish')">按当前模式执行</button></div>
-      <div style="height:8px"></div><button class="secondary" style="width:100%" onclick="marketPack()">预览 Market Pack</button>
+<div id="loginView" class="login container">
+  <section class="card">
+    <h2>登录后台</h2>
+    <p class="muted">后台已启用 ADMIN_TOKEN。未登录前不会加载配置、API Key 或运行记录。</p>
+    <label>Admin Token</label><input id="loginToken" type="password" autocomplete="current-password" placeholder="粘贴 VPS .env 里的 ADMIN_TOKEN">
+    <div style="height:14px"></div>
+    <button style="width:100%" onclick="login()">登录</button>
+    <pre id="loginMsg">等待登录...</pre>
+  </section>
+</div>
+
+<div id="appView" class="container" style="display:none">
+  <nav class="tabs">
+    <button class="tab-btn active" onclick="showTab('overview')">概览</button>
+    <button class="tab-btn" onclick="showTab('prompt')">Prompt</button>
+    <button class="tab-btn" onclick="showTab('models')">模型渠道</button>
+    <button class="tab-btn" onclick="showTab('notify')">通知 / 密钥</button>
+    <button class="tab-btn" onclick="showTab('settings')">任务设置</button>
+    <button class="tab-btn" onclick="showTab('runs')">运行记录</button>
+  </nav>
+
+  <section id="tab-overview" class="tab active">
+    <div class="grid4">
+      <div class="metric"><div class="muted">发布模式</div><div class="num" id="mMode">-</div></div>
+      <div class="metric"><div class="muted">今日额度</div><div class="num" id="mCounter">-</div></div>
+      <div class="metric"><div class="muted">LLM</div><div class="num" id="mLlm">-</div></div>
+      <div class="metric"><div class="muted">Publisher</div><div class="num" id="mPublisher">-</div></div>
     </div>
+    <div class="card">
+      <h2>快速操作</h2>
+      <div id="status" class="muted">加载中...</div>
+      <div style="height:12px"></div>
+      <div class="row"><button onclick="run('dry-run')">生成预览</button><button class="danger" onclick="run('publish')">按当前模式执行</button><button class="secondary" onclick="marketPack()">预览 Market Pack</button><button class="secondary" onclick="loadAll()">刷新</button></div>
+    </div>
+    <div class="card">
+      <h2>发帖热力图</h2>
+      <p class="muted">最近 21 天的 preview / published / error 分布；红框表示当天有失败。</p>
+      <div id="heatmap" class="heatmap"></div>
+    </div>
+    <div class="card"><h2>运行结果</h2><pre id="output">等待操作...</pre></div>
   </section>
 
-  <main>
+  <section id="tab-prompt" class="tab">
     <section class="card">
       <h2>Prompt 编辑</h2>
       <div class="row"><select id="promptSelect" onchange="selectPrompt()"></select><button class="secondary" onclick="newPrompt()">新建</button><button onclick="savePrompt()">保存 Prompt</button><button class="secondary" onclick="activatePrompt()">设为启用</button></div>
@@ -56,84 +74,123 @@
       <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}）</label>
       <textarea id="promptContent"></textarea>
     </section>
+  </section>
 
+  <section id="tab-models" class="tab">
     <section class="card">
       <h2>模型渠道配置</h2>
-      <p class="muted hint">这里保存到 VPS 的 <code>data/llm_config.json</code>，不会提交到 Git。设置为 <b>LLM Provider = openai</b> 后，会按“渠道优先级 → 模型优先级”最多尝试 10 个模型，失败自动 fallback 到下一个。</p>
+      <p class="muted hint">保存到 VPS 的 <code>data/llm_config.json</code>，不提交 Git。按“渠道优先级 → 模型优先级”最多尝试 10 个模型，失败自动 fallback。</p>
       <div class="row"><select id="llmChannelSelect" onchange="selectLlmChannel()"></select><button class="secondary" onclick="addLlmChannel()">新增渠道</button><button class="danger" onclick="deleteLlmChannel()">删除渠道</button></div>
-      <div class="two-col"><div><label>渠道 ID</label><input id="llmChannelId" placeholder="zxaihub"></div><div><label>渠道名称</label><input id="llmChannelName" placeholder="ZXAIHub"></div></div>
+      <div class="grid2"><div><label>渠道 ID</label><input id="llmChannelId" placeholder="zxaihub"></div><div><label>渠道名称</label><input id="llmChannelName" placeholder="ZXAIHub"></div></div>
       <label><input type="checkbox" id="llmChannelEnabled">启用这个渠道</label>
       <label>OpenAI-compatible Base URL</label><input id="llmChannelBaseUrl" placeholder="https://api.zxaihub.com/v1">
-      <label>API Key（可显示/更新；受 ADMIN_TOKEN 保护）</label>
-      <div class="row"><input id="llmChannelApiKey" type="password" autocomplete="off" placeholder="sk-..." /><button class="secondary" onclick="toggleLlmKey()">显示/隐藏</button></div>
-      <div class="grid4">
-        <div><label>渠道优先级</label><input id="llmChannelPriority" type="number" min="1" value="1"></div>
-        <div><label>Temperature</label><input id="llmChannelTemperature" type="number" min="0" max="2" step="0.1" value="0.8"></div>
-        <div><label>Max Tokens</label><input id="llmChannelMaxTokens" type="number" min="1" value="180"></div>
-        <div><label>Timeout ms</label><input id="llmChannelTimeoutMs" type="number" min="5000" step="1000" value="45000"></div>
-      </div>
-      <div class="row"><div><label>全局最多 fallback 模型数</label><input id="llmMaxFallbackModels" type="number" min="1" max="10" value="10"></div><div class="muted" style="padding-bottom:9px">建议填 10；每行一个模型，越靠上优先级越高。</div></div>
-      <label>模型优先级（每行一个模型 ID；前 10 个会依次尝试）</label>
-      <textarea id="llmModels" class="models-textarea" placeholder="gpt-5.4-mini&#10;gpt-5.4&#10;gpt-5.3-codex&#10;gpt-5.2&#10;gpt-5.1&#10;gpt-5"></textarea>
+      <label>API Key（可显示/更新；受 ADMIN_TOKEN 保护）</label><div class="row"><input id="llmChannelApiKey" type="password" autocomplete="off" placeholder="sk-..." /><button class="secondary" onclick="toggleLlmKey()">显示/隐藏</button></div>
+      <div class="grid4"><div><label>渠道优先级</label><input id="llmChannelPriority" type="number" min="1" value="1"></div><div><label>Temperature</label><input id="llmChannelTemperature" type="number" min="0" max="2" step="0.1" value="0.8"></div><div><label>Max Tokens</label><input id="llmChannelMaxTokens" type="number" min="1" value="180"></div><div><label>Timeout ms</label><input id="llmChannelTimeoutMs" type="number" min="5000" step="1000" value="45000"></div></div>
+      <div class="row"><div><label>全局最多 fallback 模型数</label><input id="llmMaxFallbackModels" type="number" min="1" max="10" value="10"></div><div class="muted" style="padding-bottom:9px">建议 7-10 个；每行一个模型，越靠上优先级越高。</div></div>
+      <label>模型优先级</label><textarea id="llmModels" class="models-textarea" placeholder="gpt-5.4-mini&#10;gpt-5.4&#10;gpt-5.3-codex&#10;gpt-5.2&#10;gpt-5.1&#10;gpt-5&#10;gpt-4o"></textarea>
       <div class="row"><button onclick="saveLlmConfig(true)">保存渠道配置</button><button class="secondary" onclick="fetchChannelModels()">从 /models 拉取</button><button class="secondary" onclick="testLlmChannel()">测试首选模型</button></div>
       <pre id="llmOutput">等待加载模型配置...</pre>
     </section>
+  </section>
 
+  <section id="tab-notify" class="tab">
+    <div class="grid2">
+      <section class="card">
+        <h2>Telegram 通知</h2>
+        <p class="muted">成功发帖 / 失败会推送。测试阶段也可以先配置，preview 不会真正发帖。</p>
+        <label><input type="checkbox" id="notifyTelegram">启用 Telegram 通知</label>
+        <label>Bot Token（留空不修改）</label><input id="telegramBotToken" type="password" autocomplete="off" placeholder="123456:ABC...">
+        <label>Chat ID（留空不修改）</label><input id="telegramChatId" placeholder="例如 123456789 或 -100...">
+        <div class="row" style="margin-top:14px"><button onclick="saveNotify()">保存通知配置</button><button class="secondary" onclick="testTelegram()">发送测试</button></div>
+        <pre id="notifyOutput">等待操作...</pre>
+      </section>
+      <section class="card">
+        <h2>发布密钥</h2>
+        <p class="muted">Binance Square Key 只在 <code>PUBLISH_MODE=live</code> 且点击/定时发布时使用。</p>
+        <label>Binance Square Key（留空不修改）</label><input id="binanceSquareOpenApiKey" type="password" autocomplete="off" placeholder="X-Square-OpenAPI-Key">
+        <div style="height:14px"></div><button onclick="savePublishKey()">保存发布密钥</button>
+        <pre id="secretsOutput">等待操作...</pre>
+      </section>
+    </div>
+  </section>
+
+  <section id="tab-settings" class="tab">
     <section class="card">
-      <h2>运行结果</h2>
-      <pre id="output">等待操作...</pre>
+      <h2>任务设置</h2>
+      <div class="grid2"><div><label>Job 名称</label><input id="jobName" placeholder="例如：Smart Money Autopost"></div><div><label>语言</label><input id="language" placeholder="zh-CN / en-US"></div></div>
+      <label>Job 说明</label><textarea id="jobDescription" class="small-textarea" placeholder="这条任务要做什么、面向谁、发什么内容"></textarea>
+      <label>风格要求</label><textarea id="styleGuide" class="small-textarea" placeholder="短句、交易员视角、不要模板腔..."></textarea>
+      <label><input type="checkbox" id="enabled">启用定时任务</label>
+      <label>发布模式</label><select id="publishMode"><option value="preview">仅生成预览，不真实发帖</option><option value="live">真实发布到 Binance Square</option></select>
+      <div class="grid4"><div><label>间隔分钟</label><input id="intervalMinutes" type="number" min="1"></div><div><label>每日上限</label><input id="maxDailyPosts" type="number" min="1"></div><div><label>最短字符</label><input id="minPostChars" type="number"></div><div><label>最长字符</label><input id="maxPostChars" type="number"></div></div>
+      <label>LLM Provider</label><select id="llmProvider"><option value="mock">mock 本地测试</option><option value="openai">OpenAI-compatible 渠道配置</option></select>
+      <label>禁用币种（逗号分隔）</label><input id="bannedSymbols">
+      <div style="height:14px"></div><button onclick="saveSettings()">保存任务设置</button>
     </section>
-    <section class="card">
-      <h2>最近运行</h2>
-      <div id="runs"></div>
-    </section>
-  </main>
+  </section>
+
+  <section id="tab-runs" class="tab">
+    <section class="card"><h2>最近运行</h2><div id="runs"></div></section>
+  </section>
 </div>
+
 <script>
 const $=id=>document.getElementById(id);
-let prompts=[]; let currentSettings={}; let llmConfig={channels:[],maxFallbackModels:10}; let selectedChannelId='';
-$('token').value=localStorage.getItem('adminToken')||''; $('token').oninput=()=>localStorage.setItem('adminToken',$('token').value);
-function headers(){const t=$('token').value;return {'Content-Type':'application/json',...(t?{Authorization:'Bearer '+t}:{})}}
+let prompts=[]; let currentSettings={}; let llmConfig={channels:[],maxFallbackModels:10}; let selectedChannelId=''; let runs=[];
+const tokenStore='adminToken';
+$('loginToken').value=localStorage.getItem(tokenStore)||'';
+function token(){return localStorage.getItem(tokenStore)||$('loginToken').value||''}
+function headers(){const t=token();return {'Content-Type':'application/json',...(t?{Authorization:'Bearer '+t}:{})}}
 async function api(path,opt={}){const r=await fetch(path,{...opt,headers:{...headers(),...(opt.headers||{})}});const j=await r.json();if(!r.ok||j.ok===false)throw new Error(j.error||r.statusText);return j}
 function out(x){$('output').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
 function llmOut(x){$('llmOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+function notifyOut(x){$('notifyOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+function secretsOut(x){$('secretsOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+function showLogin(msg='请输入 Admin Token 登录'){ $('loginView').style.display='grid'; $('appView').style.display='none'; $('logoutBtn').style.display='none'; $('loginMsg').textContent=msg; }
+function showApp(){ $('loginView').style.display='none'; $('appView').style.display='block'; $('logoutBtn').style.display='inline-block'; }
+async function login(){try{localStorage.setItem(tokenStore,$('loginToken').value.trim());const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)throw new Error('Admin Token 不正确');showApp();await loadAll()}catch(e){showLogin('登录失败：'+e.message)}}
+function logout(){localStorage.removeItem(tokenStore);showLogin('已退出。')}
+function showTab(name){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));$('tab-'+name).classList.add('active');[...document.querySelectorAll('.tab-btn')].find(b=>b.textContent.includes({overview:'概览',prompt:'Prompt',models:'模型',notify:'通知',settings:'任务',runs:'运行'}[name]))?.classList.add('active')}
 function linesToModels(text){return String(text||'').split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean).map((id,idx)=>({id,priority:idx+1,enabled:true}))}
 function modelsToLines(models){return (models||[]).filter(m=>m.enabled!==false).sort((a,b)=>(a.priority||1)-(b.priority||1)).map(m=>m.id).join('\n')}
-async function loadAll(){try{await loadStatus();await loadPrompts();await loadLlmConfig(true);await loadRuns()}catch(e){out('加载失败：'+e.message)}}
+async function loadAll(){try{await loadStatus();await loadPrompts();await loadLlmConfig(true);await loadRuns();showApp()}catch(e){if(/unauthorized|Admin Token|Cannot read/.test(e.message))showLogin('请登录：'+e.message);else out('加载失败：'+e.message)}}
 async function loadStatus(){
-  const j=await api('/api/status');const s=j.settings;currentSettings=s;
-  $('status').innerHTML=`<span class="pill ${s.publishMode==='live'?'bad':'ok'}">模式 ${s.publishMode==='live'?'LIVE 真实发布':'PREVIEW 只预览'}</span><span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.configured?'ok':'bad'}">LLM ${j.llm.configured?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span>`;
-  $('jobName').value=s.jobName||'';$('jobDescription').value=s.jobDescription||'';$('language').value=s.language||'';$('styleGuide').value=s.styleGuide||'';$('enabled').checked=!!s.enabled;$('publishMode').value=s.publishMode||'preview';$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider||'mock';$('binanceSquareOpenApiKey').value='';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',')
+  const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)throw new Error('Admin Token 不正确或未登录');const s=j.settings;currentSettings=s;
+  $('mMode').innerHTML=s.publishMode==='live'?'<span class="bad">LIVE</span>':'<span class="ok">PREVIEW</span>';$('mCounter').textContent=`${j.counter.count}/${s.maxDailyPosts}`;$('mLlm').innerHTML=j.llm.configured?'<span class="ok">OK</span>':'<span class="bad">未配置</span>';$('mPublisher').innerHTML=j.publisher.configured?'<span class="ok">OK</span>':'<span class="bad">未配置</span>';
+  $('status').innerHTML=`<span class="pill ${s.publishMode==='live'?'bad':'ok'}">模式 ${s.publishMode==='live'?'LIVE 真实发布':'PREVIEW 只预览'}</span><span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.configured?'ok':'bad'}">LLM ${j.llm.configured?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span><span class="pill ${j.secrets.telegramConfigured?'ok':'warn'}">TG ${j.secrets.telegramConfigured?'OK':'未配置'}</span>`;
+  $('jobName').value=s.jobName||'';$('jobDescription').value=s.jobDescription||'';$('language').value=s.language||'';$('styleGuide').value=s.styleGuide||'';$('enabled').checked=!!s.enabled;$('publishMode').value=s.publishMode||'preview';$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider||'mock';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',');$('notifyTelegram').checked=s.notifyTelegram!==false;
 }
-async function saveSettings(){
-  const body={jobName:$('jobName').value.trim(),jobDescription:$('jobDescription').value.trim(),language:$('language').value.trim(),styleGuide:$('styleGuide').value.trim(),enabled:$('enabled').checked,publishMode:$('publishMode').value,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,bannedSymbols:$('bannedSymbols').value.split(',').map(x=>x.trim()).filter(Boolean)};
-  const result={settings:await api('/api/settings',{method:'PUT',body:JSON.stringify(body)})};
-  const secretBody={};if($('binanceSquareOpenApiKey').value.trim())secretBody.binanceSquareOpenApiKey=$('binanceSquareOpenApiKey').value.trim();if(Object.keys(secretBody).length)result.secrets=await api('/api/secrets',{method:'PUT',body:JSON.stringify(secretBody)});
-  out(result);await loadStatus();
-}
+async function saveSettings(){try{const body={jobName:$('jobName').value.trim(),jobDescription:$('jobDescription').value.trim(),language:$('language').value.trim(),styleGuide:$('styleGuide').value.trim(),enabled:$('enabled').checked,publishMode:$('publishMode').value,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,bannedSymbols:$('bannedSymbols').value.split(',').map(x=>x.trim()).filter(Boolean),notifyTelegram:$('notifyTelegram').checked};out(await api('/api/settings',{method:'PUT',body:JSON.stringify(body)}));await loadStatus()}catch(e){out('保存失败：'+e.message)}}
+async function savePublishKey(){try{const body={};if($('binanceSquareOpenApiKey').value.trim())body.binanceSquareOpenApiKey=$('binanceSquareOpenApiKey').value.trim();secretsOut(await api('/api/secrets',{method:'PUT',body:JSON.stringify(body)}));$('binanceSquareOpenApiKey').value='';await loadStatus()}catch(e){secretsOut('保存失败：'+e.message)}}
+async function saveNotify(){try{const secretBody={};if($('telegramBotToken').value.trim())secretBody.telegramBotToken=$('telegramBotToken').value.trim();if($('telegramChatId').value.trim())secretBody.telegramChatId=$('telegramChatId').value.trim();const result={settings:await api('/api/settings',{method:'PUT',body:JSON.stringify({notifyTelegram:$('notifyTelegram').checked})})};if(Object.keys(secretBody).length)result.secrets=await api('/api/secrets',{method:'PUT',body:JSON.stringify(secretBody)});$('telegramBotToken').value='';$('telegramChatId').value='';notifyOut(result);await loadStatus()}catch(e){notifyOut('保存失败：'+e.message)}}
+async function testTelegram(){try{await saveNotify();notifyOut(await api('/api/telegram/test',{method:'POST'}))}catch(e){notifyOut('测试失败：'+e.message)}}
 async function loadPrompts(){const j=await api('/api/prompts');prompts=j.prompts;$('promptSelect').innerHTML=prompts.map(p=>`<option value="${escapeHtml(p.id)}">${p.active?'✅ ':''}${escapeHtml(p.name)}</option>`).join('');selectPrompt()}
 function selectPrompt(){const p=prompts.find(x=>x.id===$('promptSelect').value)||prompts[0];if(!p)return;$('promptName').value=p.name;$('promptContent').value=p.content}
-async function savePrompt(){const id=$('promptSelect').value;const body={name:$('promptName').value,content:$('promptContent').value};out(await api('/api/prompts/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify(body)}));await loadPrompts()}
-async function activatePrompt(){const id=$('promptSelect').value;out(await api('/api/prompts/'+encodeURIComponent(id)+'/activate',{method:'POST'}));await loadPrompts()}
-async function newPrompt(){const body={name:'新 Prompt',content:$('promptContent').value,active:false};const j=await api('/api/prompts',{method:'POST',body:JSON.stringify(body)});out(j);await loadPrompts();$('promptSelect').value=j.prompt.id;selectPrompt()}
+async function savePrompt(){try{const id=$('promptSelect').value;const body={name:$('promptName').value,content:$('promptContent').value};out(await api('/api/prompts/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify(body)}));await loadPrompts()}catch(e){out('保存 Prompt 失败：'+e.message)}}
+async function activatePrompt(){try{const id=$('promptSelect').value;out(await api('/api/prompts/'+encodeURIComponent(id)+'/activate',{method:'POST'}));await loadPrompts()}catch(e){out('启用失败：'+e.message)}}
+async function newPrompt(){try{const body={name:'新 Prompt',content:$('promptContent').value,active:false};const j=await api('/api/prompts',{method:'POST',body:JSON.stringify(body)});out(j);await loadPrompts();$('promptSelect').value=j.prompt.id;selectPrompt()}catch(e){out('新建失败：'+e.message)}}
 function currentChannel(){return llmConfig.channels.find(ch=>ch.id===selectedChannelId)||llmConfig.channels[0]}
 async function loadLlmConfig(reveal=false){const j=await api('/api/llm-config'+(reveal?'?reveal=1':''));llmConfig=j.llmConfig||{channels:[],maxFallbackModels:10};if(!llmConfig.channels.length)llmConfig.channels=[newBlankChannel()];selectedChannelId=selectedChannelId&&llmConfig.channels.some(ch=>ch.id===selectedChannelId)?selectedChannelId:llmConfig.channels[0].id;renderChannelSelect();selectLlmChannel();llmOut({loaded:true,channels:llmConfig.channels.map(ch=>({id:ch.id,name:ch.name,enabled:ch.enabled,models:(ch.models||[]).length,hasApiKey:!!(ch.apiKey||ch.hasApiKey)}))})}
 function renderChannelSelect(){$('llmChannelSelect').innerHTML=llmConfig.channels.sort((a,b)=>(a.priority||1)-(b.priority||1)).map(ch=>`<option value="${escapeHtml(ch.id)}">${ch.enabled!==false?'✅':'⏸'} ${escapeHtml(ch.name||ch.id)} · #${ch.priority||1}</option>`).join('');$('llmChannelSelect').value=selectedChannelId;$('llmMaxFallbackModels').value=llmConfig.maxFallbackModels||10}
 function selectLlmChannel(){selectedChannelId=$('llmChannelSelect').value||selectedChannelId;const ch=currentChannel();if(!ch)return;$('llmChannelId').value=ch.id||'';$('llmChannelName').value=ch.name||'';$('llmChannelEnabled').checked=ch.enabled!==false;$('llmChannelBaseUrl').value=ch.baseUrl||'';$('llmChannelApiKey').value=ch.apiKey||'';$('llmChannelPriority').value=ch.priority||1;$('llmChannelTemperature').value=ch.temperature??0.8;$('llmChannelMaxTokens').value=ch.maxTokens||180;$('llmChannelTimeoutMs').value=ch.timeoutMs||45000;$('llmModels').value=modelsToLines(ch.models)}
 function collectChannelFromForm(){return {id:$('llmChannelId').value.trim()||selectedChannelId||'primary',name:$('llmChannelName').value.trim()||$('llmChannelId').value.trim()||'OpenAI-compatible',baseUrl:$('llmChannelBaseUrl').value.trim().replace(/\/+$/,''),apiKey:$('llmChannelApiKey').value.trim(),enabled:$('llmChannelEnabled').checked,priority:Math.max(1,+$('llmChannelPriority').value||1),temperature:+$('llmChannelTemperature').value,maxTokens:+$('llmChannelMaxTokens').value,timeoutMs:+$('llmChannelTimeoutMs').value,models:linesToModels($('llmModels').value)}}
 function upsertCurrentChannel(){const ch=collectChannelFromForm();const oldId=selectedChannelId;const idx=llmConfig.channels.findIndex(x=>x.id===oldId);if(idx>=0)llmConfig.channels[idx]=ch;else llmConfig.channels.push(ch);selectedChannelId=ch.id;llmConfig.maxFallbackModels=Math.max(1,Math.min(10,+$('llmMaxFallbackModels').value||10));return ch}
-async function saveLlmConfig(show=true){const ch=upsertCurrentChannel();const j=await api('/api/llm-config',{method:'PUT',body:JSON.stringify(llmConfig)});llmConfig=j.llmConfig;selectedChannelId=(llmConfig.channels.find(x=>x.id===ch.id)||llmConfig.channels[0]||{}).id;renderChannelSelect();selectLlmChannel();if(show)llmOut({saved:true,selectedChannelId,priorityPreview:llmConfig.channels.flatMap(c=>(c.models||[]).slice(0,10).map(m=>({channel:c.name,model:m.id,channelPriority:c.priority,modelPriority:m.priority}))).slice(0,llmConfig.maxFallbackModels||10)});return j}
+async function saveLlmConfig(show=true){try{const ch=upsertCurrentChannel();const j=await api('/api/llm-config',{method:'PUT',body:JSON.stringify(llmConfig)});llmConfig=j.llmConfig;selectedChannelId=(llmConfig.channels.find(x=>x.id===ch.id)||llmConfig.channels[0]||{}).id;renderChannelSelect();selectLlmChannel();if(show)llmOut({saved:true,selectedChannelId,priorityPreview:llmConfig.channels.flatMap(c=>(c.models||[]).slice(0,10).map(m=>({channel:c.name,model:m.id,channelPriority:c.priority,modelPriority:m.priority}))).slice(0,llmConfig.maxFallbackModels||10)});await loadStatus();return j}catch(e){llmOut('保存失败：'+e.message)}}
 function newBlankChannel(){const n=(llmConfig.channels||[]).length+1;return {id:'channel_'+n,name:'New Channel '+n,baseUrl:'https://api.openai.com/v1',apiKey:'',enabled:true,priority:n,temperature:0.8,maxTokens:180,timeoutMs:45000,models:[]}}
 function addLlmChannel(){upsertCurrentChannel();const ch=newBlankChannel();llmConfig.channels.push(ch);selectedChannelId=ch.id;renderChannelSelect();selectLlmChannel();llmOut('已新增渠道，填好 Base URL / API Key / 模型后点击保存。')}
-async function deleteLlmChannel(){const ch=currentChannel();if(!ch||!confirm('删除渠道 '+ch.name+'？'))return;llmConfig.channels=llmConfig.channels.filter(x=>x.id!==ch.id);if(!llmConfig.channels.length)llmConfig.channels=[newBlankChannel()];selectedChannelId=llmConfig.channels[0].id;renderChannelSelect();selectLlmChannel();const j=await api('/api/llm-config',{method:'PUT',body:JSON.stringify(llmConfig)});llmConfig=j.llmConfig;selectedChannelId=llmConfig.channels[0]?.id||'';renderChannelSelect();selectLlmChannel();llmOut({deleted:ch.id,channels:llmConfig.channels.map(c=>c.id)})}
+async function deleteLlmChannel(){try{const ch=currentChannel();if(!ch||!confirm('删除渠道 '+ch.name+'？'))return;llmConfig.channels=llmConfig.channels.filter(x=>x.id!==ch.id);if(!llmConfig.channels.length)llmConfig.channels=[newBlankChannel()];selectedChannelId=llmConfig.channels[0].id;renderChannelSelect();selectLlmChannel();const j=await api('/api/llm-config',{method:'PUT',body:JSON.stringify(llmConfig)});llmConfig=j.llmConfig;selectedChannelId=llmConfig.channels[0]?.id||'';renderChannelSelect();selectLlmChannel();llmOut({deleted:ch.id,channels:llmConfig.channels.map(c=>c.id)})}catch(e){llmOut('删除失败：'+e.message)}}
 function toggleLlmKey(){const el=$('llmChannelApiKey');el.type=el.type==='password'?'text':'password'}
-async function fetchChannelModels(){const ch=upsertCurrentChannel();llmOut('正在保存并从 /models 拉取模型列表...');await saveLlmConfig(false);const j=await api('/api/llm-config/channels/'+encodeURIComponent(ch.id)+'/models/fetch',{method:'POST'});llmConfig=j.llmConfig;selectedChannelId=ch.id;renderChannelSelect();selectLlmChannel();llmOut({fetchedCount:j.fetchedModels.length,fetchedModels:j.fetchedModels})}
-async function testLlmChannel(){const ch=upsertCurrentChannel();await saveLlmConfig(false);const model=(linesToModels($('llmModels').value)[0]||{}).id;if(!model)throw new Error('请先填写至少一个模型');llmOut('正在测试 '+ch.name+' / '+model+' ...');llmOut(await api('/api/llm-config/test',{method:'POST',body:JSON.stringify({channelId:ch.id,model})}))}
-async function run(mode){if(mode==='publish'&&currentSettings.publishMode==='live'&&!confirm('当前是 LIVE 模式，确认真实发布到 Binance Square？'))return;out(currentSettings.publishMode==='live'&&mode==='publish'?'真实发布中...':'生成预览中...');const j=await api('/api/run',{method:'POST',body:JSON.stringify({mode})});out(j);await loadAll()}
-async function marketPack(){out('获取中...');out(await api('/api/market-pack',{method:'POST'}))}
-async function loadRuns(){const j=await api('/api/runs?limit=30');$('runs').innerHTML=j.runs.map(r=>`<div class="run"><div><span class="pill ${r.status==='published'?'ok':r.status==='error'?'bad':''}">${escapeHtml(r.status)}</span><span class="muted">${escapeHtml(r.createdAt||'')} · ${escapeHtml(r.source||'')} · ${escapeHtml([r.lead,r.peer,r.anchor].filter(Boolean).join('/'))}${r.model?` · ${escapeHtml(r.channelName||r.channelId||'')} / ${escapeHtml(r.model)}`:''}</span></div>${r.postText?`<div class="post">${escapeHtml(r.postText)}</div>`:''}${r.url?`<a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.url)}</a>`:''}${r.error?`<div class="bad">${escapeHtml(r.error)}</div>`:''}</div>`).join('')}
+async function fetchChannelModels(){try{const ch=upsertCurrentChannel();llmOut('正在保存并从 /models 拉取模型列表...');await saveLlmConfig(false);const j=await api('/api/llm-config/channels/'+encodeURIComponent(ch.id)+'/models/fetch',{method:'POST'});llmConfig=j.llmConfig;selectedChannelId=ch.id;renderChannelSelect();selectLlmChannel();llmOut({fetchedCount:j.fetchedModels.length,fetchedModels:j.fetchedModels})}catch(e){llmOut('拉取失败：'+e.message)}}
+async function testLlmChannel(){try{const ch=upsertCurrentChannel();await saveLlmConfig(false);const model=(linesToModels($('llmModels').value)[0]||{}).id;if(!model)throw new Error('请先填写至少一个模型');llmOut('正在测试 '+ch.name+' / '+model+' ...');llmOut(await api('/api/llm-config/test',{method:'POST',body:JSON.stringify({channelId:ch.id,model})}))}catch(e){llmOut('测试失败：'+e.message)}}
+async function run(mode){try{if(mode==='publish'&&currentSettings.publishMode==='live'&&!confirm('当前是 LIVE 模式，确认真实发布到 Binance Square？'))return;out(currentSettings.publishMode==='live'&&mode==='publish'?'真实发布中...':'生成预览中...');const j=await api('/api/run',{method:'POST',body:JSON.stringify({mode})});out(j);await loadAll()}catch(e){out('执行失败：'+e.message)}}
+async function marketPack(){try{out('获取中...');out(await api('/api/market-pack',{method:'POST'}))}catch(e){out('获取失败：'+e.message)}}
+async function loadRuns(){const j=await api('/api/runs?limit=200');runs=j.runs||[];renderRuns();renderHeatmap()}
+function renderRuns(){$('runs').innerHTML=runs.slice(0,80).map(r=>`<div class="run"><div><span class="pill ${r.status==='published'?'ok':r.status==='error'?'bad':''}">${escapeHtml(r.status)}</span><span class="muted">${escapeHtml(r.createdAt||'')} · ${escapeHtml(r.source||'')} · ${escapeHtml([r.lead,r.peer,r.anchor].filter(Boolean).join('/'))}${r.model?` · ${escapeHtml(r.channelName||r.channelId||'')} / ${escapeHtml(r.model)}`:''}</span></div>${r.postText?`<div class="post">${escapeHtml(r.postText)}</div>`:''}${r.url?`<a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.url)}</a>`:''}${r.error?`<div class="bad">${escapeHtml(r.error)}</div>`:''}</div>`).join('')||'<p class="muted">暂无运行记录。</p>'}
+function dateKey(d){const z=new Date(d);return `${z.getFullYear()}-${String(z.getMonth()+1).padStart(2,'0')}-${String(z.getDate()).padStart(2,'0')}`}
+function renderHeatmap(){const map={};for(const r of runs){if(!r.createdAt)continue;const k=dateKey(r.createdAt);map[k]??={total:0,error:0,published:0,preview:0};map[k].total++;if(r.status==='error')map[k].error++;if(r.status==='published')map[k].published++;if(r.status==='preview')map[k].preview++}const days=[];for(let i=20;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=dateKey(d);const v=map[k]||{total:0,error:0,published:0,preview:0};const level=v.total>=5?'l3':v.total>=2?'l2':v.total>=1?'l1':'';days.push(`<div class="cell ${level} ${v.error?'err':''}"><span>${k}<br>总计 ${v.total}<br>预览 ${v.preview} / 发布 ${v.published} / 失败 ${v.error}</span></div>`)}$('heatmap').innerHTML=days.join('')}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-setInterval(()=>$('clock').textContent=new Date().toLocaleString(),1000);loadAll();
+setInterval(()=>$('clock').textContent=new Date().toLocaleString(),1000);
+(async()=>{try{const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)return showLogin('请输入 Admin Token 登录');showApp();await loadAll()}catch(e){showLogin('请输入 Admin Token 登录')}})();
 </script>
 </body>
 </html>
