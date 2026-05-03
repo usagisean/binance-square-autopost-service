@@ -66,6 +66,15 @@ function extractChoiceText(json) {
   }
   if (typeof choice?.text === 'string') return choice.text;
   if (typeof json?.output_text === 'string') return json.output_text;
+  if (Array.isArray(json?.output)) {
+    return json.output.map(item => {
+      if (typeof item?.content === 'string') return item.content;
+      if (Array.isArray(item?.content)) {
+        return item.content.map(part => part?.text || part?.value || part?.content || '').join('');
+      }
+      return item?.text || '';
+    }).join('');
+  }
   return '';
 }
 
@@ -85,12 +94,20 @@ function effectiveMaxTokens(candidate = {}) {
 async function callOpenAIWithCandidate(prompt, candidate) {
   if (!candidate?.apiKey) throw new Error('missing_openai_api_key');
   const baseUrl = String(candidate.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
-  const url = `${baseUrl}/chat/completions`;
-  const useCompletionTokenParam = isReasoningLikeModel(candidate.model);
-  const run = async (maxTokens, tokenParam = useCompletionTokenParam ? 'max_completion_tokens' : 'max_tokens') => {
+  const chatUrl = `${baseUrl}/chat/completions`;
+  const responsesUrl = `${baseUrl}/responses`;
+  const reasoningLike = isReasoningLikeModel(candidate.model);
+  const timeoutMs = Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000);
+  const headers = { Authorization: `Bearer ${candidate.apiKey}` };
+  const maybeTemperature = () => {
+    // Several GPT-5/o-series relays either reject or silently mishandle non-default temperature.
+    if (reasoningLike) return {};
+    return { temperature: Number(candidate.temperature ?? config.openaiTemperature ?? 0.8) };
+  };
+  const runChat = async (maxTokens, tokenParam = reasoningLike ? 'max_completion_tokens' : 'max_tokens') => {
     const payload = {
       model: candidate.model || config.openaiModel,
-      temperature: Number(candidate.temperature ?? config.openaiTemperature ?? 0.8),
+      ...maybeTemperature(),
       messages: [
         { role: 'system', content: '你只输出最终可发布的纯文本短帖，不解释过程。' },
         { role: 'user', content: prompt }
@@ -99,27 +116,54 @@ async function callOpenAIWithCandidate(prompt, candidate) {
     if (Number.isFinite(maxTokens) && maxTokens > 0) payload[tokenParam] = maxTokens;
     let json;
     try {
-      json = await postJson(url, payload, {
-        headers: { Authorization: `Bearer ${candidate.apiKey}` },
-        timeoutMs: Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000)
-      });
+      json = await postJson(chatUrl, payload, { headers, timeoutMs });
     } catch (err) {
       // Some OpenAI-compatible relays do not support max_completion_tokens yet.
       if (tokenParam === 'max_completion_tokens' && /http_400|unsupported|unknown|max_completion_tokens/i.test(err.message || '')) {
-        return run(maxTokens, 'max_tokens');
+        return runChat(maxTokens, 'max_tokens');
       }
       throw err;
     }
     return { json, text: compactText(extractChoiceText(json)) };
   };
+  const runResponses = async (maxTokens) => {
+    const payload = {
+      model: candidate.model || config.openaiModel,
+      instructions: '你只输出最终可发布的纯文本短帖，不解释过程。',
+      input: prompt,
+      ...maybeTemperature()
+    };
+    if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_output_tokens = maxTokens;
+    const json = await postJson(responsesUrl, payload, { headers, timeoutMs });
+    return { json, text: compactText(extractChoiceText(json)) };
+  };
 
   const firstMaxTokens = effectiveMaxTokens(candidate);
-  let { json, text } = await run(firstMaxTokens);
-  if (!text && isReasoningLikeModel(candidate.model) && firstMaxTokens < 1200) {
-    ({ json, text } = await run(1200));
+  const attempts = reasoningLike
+    ? [
+        () => runChat(firstMaxTokens, 'max_completion_tokens'),
+        () => runChat(Math.max(firstMaxTokens, 1200), 'max_tokens'),
+        () => runResponses(Math.max(firstMaxTokens, 1200)),
+        () => runChat(4096, 'max_tokens'),
+        () => runResponses(4096)
+      ]
+    : [
+        () => runChat(firstMaxTokens, 'max_tokens'),
+        () => runResponses(firstMaxTokens)
+      ];
+  let json = null;
+  const errors = [];
+  for (const attempt of attempts) {
+    try {
+      const result = await attempt();
+      json = result.json;
+      if (result.text) return result.text;
+    } catch (err) {
+      errors.push(err.message || String(err));
+    }
   }
-  if (!text) throw new Error(`llm_empty_response:${JSON.stringify(json).slice(0, 300)}`);
-  return text;
+  if (!json && errors.length) throw new Error(`llm_request_failed:${errors.join(' | ')}`);
+  throw new Error(`llm_empty_response:${JSON.stringify(json).slice(0, 300)}${errors.length ? `; fallback_errors=${errors.join(' | ')}` : ''}`);
 }
 
 function validatePostText(text, pack, settings = getSettings()) {
