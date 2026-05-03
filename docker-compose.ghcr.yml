@@ -19,3 +19,26 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: binance-square-autopost-caddy
+    restart: unless-stopped
+    profiles:
+      - caddy
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

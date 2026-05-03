@@ -397,3 +397,41 @@ BINANCE_SQUARE_OPENAPI_KEY=
 
 - `VPS_ENV` 里可以放真实 API key，但它会存放在 GitHub Secrets 和 VPS `.env`。如果你不想把业务 key 放 GitHub，就先让 `VPS_ENV` 保持 mock/preview，部署后到 Web 后台手动填写 key。
 - 域名和 HTTPS 不在 GitHub Actions 里配置。域名 DNS 指向 VPS 后，在 VPS 上配置 Caddy/Nginx 反代即可。
+
+### 用内置 Caddy 自动绑定域名
+
+如果 DNS 已经把域名解析到 VPS，可以直接启用 compose 里的 Caddy profile。
+
+在 GitHub Secret `VPS_ENV` 里加/改：
+
+```env
+COMPOSE_PROFILES=caddy
+DOMAIN=bnsquare.your-domain.example
+PUBLIC_BASE_URL=https://bnsquare.your-domain.example
+HOST_PORT=8787
+```
+
+部署后会启动两个容器：
+
+- `binance-square-autopost-service`：应用容器
+- `binance-square-autopost-caddy`：HTTPS 反代容器
+
+Caddy 会监听 VPS 的 `80/443`，并反代到 compose 网络里的 `app:8787`。
+
+VPS 防火墙/安全组需要放行：
+
+```text
+80/tcp
+443/tcp
+```
+
+如果你使用 Cloudflare 橙云代理，建议：
+
+- SSL/TLS 模式选择 `Full` 或 `Full (strict)`
+- 不要用 `Flexible`，否则容易出现 HTTPS 重定向循环
+
+首次部署后访问：
+
+```text
+https://bnsquare.your-domain.example
+```
