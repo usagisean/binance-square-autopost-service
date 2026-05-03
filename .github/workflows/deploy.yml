@@ -65,6 +65,8 @@ jobs:
             git -C "$APP_DIR" reset --hard origin/main
           fi
           mkdir -p "$APP_DIR/data"
+          # The app container runs as the node user (uid/gid 1000) and writes runtime JSON files here.
+          $SUDO chown -R 1000:1000 "$APP_DIR/data"
           if [ ! -f "$APP_DIR/.env" ]; then
             cp "$APP_DIR/.env.docker.example" "$APP_DIR/.env"
             chmod 600 "$APP_DIR/.env"

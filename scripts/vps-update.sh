@@ -6,6 +6,7 @@ set -euo pipefail
 
 git pull --ff-only
 mkdir -p data
+chown -R 1000:1000 data
 docker compose up -d --build
 sleep 2
 docker compose ps
