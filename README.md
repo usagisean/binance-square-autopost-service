@@ -78,7 +78,7 @@ Authorization: Bearer {OPENAI_API_KEY}
 
 ```env
 OPENAI_BASE_URL=https://你的中转站域名/v1
-OPENAI_API_KEY=你的中转站 key
+OPENAI_API_KEY=
 OPENAI_MODEL=中转站支持的模型名
 ```
 
@@ -118,9 +118,9 @@ JOB_DESCRIPTION=你的发帖目标、主题、受众说明
 POST_LANGUAGE=zh-CN
 STYLE_GUIDE=你的文风要求
 OPENAI_BASE_URL=https://你的中转站/v1
-OPENAI_API_KEY=你的中转站 key
+OPENAI_API_KEY=
 OPENAI_MODEL=你的模型名
-BINANCE_SQUARE_OPENAPI_KEY=你的 Binance Square key
+BINANCE_SQUARE_OPENAPI_KEY=
 PUBLISH_MODE=preview
 ```
 
@@ -165,3 +165,109 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" http://127.0.0.1:8787/api/status
 - 不要把 `.env` 提交到 Git。
 - 如果 VPS 出口本身对 Binance 被 451，优先换 VPS 区域；也可以在 `.env` 配置 `HTTPS_PROXY`，但生产上更推荐稳定干净的 VPS 出口。
 - `mock` 模式不会调用 LLM，适合先验证页面、定时、行情与发布链路。真正发帖请使用真实 LLM。若你强行用 mock 发布，服务不会阻止，但内容会比较模板。
+
+## Docker / VPS 部署链路
+
+### 方案 A：VPS 本地 build（最直接）
+
+在 VPS 上安装 Docker 和 Docker Compose Plugin 后：
+
+```bash
+git clone https://github.com/usagisean/binance-square-autopost-service.git
+cd binance-square-autopost-service
+cp .env.docker.example .env
+mkdir -p data
+nano .env
+```
+
+先保持：
+
+```env
+PUBLISH_MODE=preview
+LLM_PROVIDER=mock
+```
+
+启动：
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f app
+```
+
+健康检查：
+
+```bash
+curl http://127.0.0.1:8787/health
+```
+
+打开后台前，建议先配置域名反代；如果只是临时测试，可以用 SSH tunnel：
+
+```bash
+ssh -L 8787:127.0.0.1:8787 root@YOUR_VPS_IP
+```
+
+然后本机打开：`http://127.0.0.1:8787`。
+
+更新代码：
+
+```bash
+./scripts/vps-update.sh
+```
+
+### 方案 B：GitHub Actions 构建 GHCR 镜像，VPS 只拉镜像
+
+仓库包含 `.github/workflows/docker.yml`。推送到 `main` 后，GitHub Actions 会构建：
+
+```text
+ghcr.io/usagisean/binance-square-autopost-service:main
+```
+
+VPS 上使用：
+
+```bash
+mkdir -p /opt/binance-square-autopost-service/data
+cd /opt/binance-square-autopost-service
+curl -O https://raw.githubusercontent.com/usagisean/binance-square-autopost-service/main/docker-compose.ghcr.yml
+curl -o .env https://raw.githubusercontent.com/usagisean/binance-square-autopost-service/main/.env.docker.example
+nano .env
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+如果 GHCR package 是 private，需要先登录：
+
+```bash
+echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+### 域名与 HTTPS
+
+推荐让容器只绑定本机端口：
+
+```yaml
+ports:
+  - "127.0.0.1:8787:8787"
+```
+
+然后用 Caddy 或 Nginx 反代。
+
+Caddy 示例：`deploy/caddy/Caddyfile.example`
+
+```caddyfile
+your-domain.example.com {
+  encode gzip
+  reverse_proxy 127.0.0.1:8787
+}
+```
+
+Nginx 示例：`deploy/nginx/binance-square-autopost.conf.example`
+
+首次部署建议流程：
+
+1. DNS A 记录指向 VPS IP。
+2. Docker 服务启动并确认 `curl 127.0.0.1:8787/health` 正常。
+3. 配置 Caddy/Nginx HTTPS。
+4. 后台设置 `ADMIN_TOKEN`。
+5. 保持 `PUBLISH_MODE=preview`，只看生成内容。
+6. 内容稳定后再切 `PUBLISH_MODE=live`。
