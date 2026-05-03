@@ -90,8 +90,10 @@ jobs:
           docker compose up -d --build
           docker compose ps
           docker image prune -f >/dev/null 2>&1 || true
-          set -a
-          [ -f .env ] && . ./.env
-          set +a
-          curl -fsS "http://127.0.0.1:${HOST_PORT:-8787}/health" || curl -fsS http://127.0.0.1:8787/health
+          HOST_PORT_VALUE="8787"
+          if [ -f .env ]; then
+            HOST_PORT_VALUE="$(grep -E '^HOST_PORT=' .env | tail -n1 | cut -d= -f2- | tr -d '\r' || true)"
+            HOST_PORT_VALUE="${HOST_PORT_VALUE:-8787}"
+          fi
+          curl -fsS "http://127.0.0.1:${HOST_PORT_VALUE}/health" || curl -fsS http://127.0.0.1:8787/health
           REMOTE
