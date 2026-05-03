@@ -1,0 +1,21 @@
+[Unit]
+Description=Binance Square Autopost Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/binance-square-autopost-service
+EnvironmentFile=/opt/binance-square-autopost-service/.env
+ExecStart=/usr/bin/node /opt/binance-square-autopost-service/src/server.js
+Restart=always
+RestartSec=5
+User=binancepost
+Group=binancepost
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/binance-square-autopost-service/data
+
+[Install]
+WantedBy=multi-user.target
