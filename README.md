@@ -271,3 +271,129 @@ Nginx 示例：`deploy/nginx/binance-square-autopost.conf.example`
 4. 后台设置 `ADMIN_TOKEN`。
 5. 保持 `PUBLISH_MODE=preview`，只看生成内容。
 6. 内容稳定后再切 `PUBLISH_MODE=live`。
+
+## GitHub Actions 自动部署到 VPS
+
+仓库包含 `.github/workflows/deploy.yml`。它会通过 SSH 登录 VPS，自动：
+
+1. 安装/检查 `git`、`docker`；
+2. clone/pull 当前仓库；
+3. 把 GitHub Secret `VPS_ENV` 写成 VPS 上的 `.env`；
+4. 执行 `docker compose up -d --build`；
+5. 调用 `/health` 做健康检查。
+
+### 你需要准备
+
+你至少需要：
+
+- VPS IP
+- VPS SSH 用户，推荐 `root`；非 root 用户需要免密 sudo
+- VPS SSH 端口，默认 `22`
+- 一对专门给 GitHub Actions 用的 SSH key
+
+### 生成部署 SSH key
+
+在你的本机执行：
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-binance-autopost" -f ~/.ssh/binance_autopost_actions
+```
+
+把公钥放进 VPS：
+
+```bash
+cat ~/.ssh/binance_autopost_actions.pub | ssh root@YOUR_VPS_IP 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'
+```
+
+测试：
+
+```bash
+ssh -i ~/.ssh/binance_autopost_actions root@YOUR_VPS_IP 'echo ok'
+```
+
+### GitHub Secrets
+
+进入仓库：
+
+`Settings` → `Secrets and variables` → `Actions` → `New repository secret`
+
+添加：
+
+```text
+VPS_HOST=你的 VPS IP
+VPS_USER=root
+VPS_PORT=22
+VPS_APP_DIR=/opt/binance-square-autopost-service
+```
+
+`VPS_SSH_KEY` 填私钥内容：
+
+```bash
+cat ~/.ssh/binance_autopost_actions
+```
+
+`VPS_ENV` 填完整 `.env` 内容。测试阶段建议：
+
+```env
+HOST_PORT=8787
+HOST=0.0.0.0
+PORT=8787
+PUBLIC_BASE_URL=http://YOUR_VPS_IP:8787
+ADMIN_TOKEN=change-me-long-random-token
+
+PUBLISH_MODE=preview
+
+JOB_NAME=Binance Square Market Autopost
+JOB_DESCRIPTION=基于真实 Binance 行情，生成有交易员视角的短帖。
+POST_LANGUAGE=zh-CN
+STYLE_GUIDE=短句、克制、有交易感；不要报告腔、模板腔、喊单腔。
+CONTENT_SOURCE=binance-market-pack
+POST_TARGET=binance-square
+DEFAULT_PROMPT_FILE=
+
+LLM_PROVIDER=mock
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_TEMPERATURE=0.8
+OPENAI_MAX_TOKENS=180
+OPENAI_TIMEOUT_MS=45000
+
+BINANCE_SQUARE_OPENAPI_KEY=
+
+HTTPS_PROXY=
+HTTP_PROXY=
+NO_PROXY=localhost,127.0.0.1,::1
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+等 preview 链路跑通后，再把 `VPS_ENV` 改成你的真实中转站和 key：
+
+```env
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=https://你的中转站/v1
+OPENAI_API_KEY=
+OPENAI_MODEL=你的模型名
+```
+
+真正发帖前最后才改：
+
+```env
+PUBLISH_MODE=live
+BINANCE_SQUARE_OPENAPI_KEY=
+```
+
+### 触发部署
+
+方式一：手动触发
+
+`Actions` → `Deploy to VPS` → `Run workflow`
+
+方式二：push 到 `main` 自动触发。
+
+### 注意
+
+- `VPS_ENV` 里可以放真实 API key，但它会存放在 GitHub Secrets 和 VPS `.env`。如果你不想把业务 key 放 GitHub，就先让 `VPS_ENV` 保持 mock/preview，部署后到 Web 后台手动填写 key。
+- 域名和 HTTPS 不在 GitHub Actions 里配置。域名 DNS 指向 VPS 后，在 VPS 上配置 Caddy/Nginx 反代即可。
