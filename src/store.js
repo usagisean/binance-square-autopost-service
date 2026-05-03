@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { DATA_DIR, config } = require('./config');
+const { DATA_DIR, ROOT, config } = require('./config');
 
 const paths = {
   settings: path.join(DATA_DIR, 'settings.json'),
@@ -14,7 +14,14 @@ const paths = {
 };
 
 const defaultSettings = {
+  jobName: process.env.JOB_NAME || 'Binance Square Market Autopost',
+  jobDescription: process.env.JOB_DESCRIPTION || '基于真实 Binance 行情，生成有交易员视角的中文短帖。',
+  language: process.env.POST_LANGUAGE || 'zh-CN',
+  styleGuide: process.env.STYLE_GUIDE || '短句、克制、有交易感；不要报告腔、模板腔、喊单腔。',
+  contentSource: process.env.CONTENT_SOURCE || 'binance-market-pack',
+  postTarget: process.env.POST_TARGET || 'binance-square',
   enabled: false,
+  publishMode: config.publishMode === 'live' ? 'live' : 'preview',
   intervalMinutes: 20,
   maxDailyPosts: 100,
   timezone: 'Asia/Shanghai',
@@ -33,7 +40,15 @@ const defaultSettings = {
   openaiTimeoutMs: config.openaiTimeoutMs
 };
 
-const defaultPrompt = `你是一位长期盯盘的中文加密货币交易员。请基于真实行情数据写一条 Binance Square 短帖。\n\n要求：\n- 必须自然提到 {{LEAD}}, {{PEER}}, {{ANCHOR}} 三个币种，并使用 Cashtag：${'{{LEAD_CASHTAG}}'} ${'{{PEER_CASHTAG}}'} ${'{{ANCHOR_CASHTAG}}'}\n- 55 到 110 个中文字符，短句，有交易员视角。\n- 不要标题，不要项目符号，不要“不是投资建议”。\n- 不要编造 facts 之外的信息。\n- 写出谁更强、谁只是跟随、谁是情绪锚，但要像真人盘中表达。\n\n行情 facts：\n{{FACTS}}\n\n交易解读：\n{{TAKEAWAYS}}`;
+function loadDefaultPrompt() {
+  const promptPath = process.env.DEFAULT_PROMPT_FILE || path.join(ROOT, 'templates', 'default-prompt.md');
+  try {
+    return fs.readFileSync(promptPath, 'utf8').trim();
+  } catch {
+    return `你正在执行「{{JOB_NAME}}」这个自动发帖任务。请基于 {{FACTS}} 和 {{TAKEAWAYS}} 写一条包含 {{LEAD_CASHTAG}} {{PEER_CASHTAG}} {{ANCHOR_CASHTAG}} 的短帖。`;
+  }
+}
+const defaultPrompt = loadDefaultPrompt();
 
 function nowIso() { return new Date().toISOString(); }
 function id(prefix = '') { return `${prefix}${crypto.randomUUID()}`; }
@@ -69,6 +84,13 @@ function getSettings() {
 
 function saveSettings(patch) {
   const next = { ...getSettings(), ...patch, updatedAt: nowIso() };
+  next.publishMode = String(next.publishMode || 'preview').toLowerCase() === 'live' ? 'live' : 'preview';
+  next.jobName = String(next.jobName || defaultSettings.jobName).trim();
+  next.jobDescription = String(next.jobDescription || defaultSettings.jobDescription).trim();
+  next.language = String(next.language || defaultSettings.language).trim();
+  next.styleGuide = String(next.styleGuide || defaultSettings.styleGuide).trim();
+  next.contentSource = String(next.contentSource || defaultSettings.contentSource).trim();
+  next.postTarget = String(next.postTarget || defaultSettings.postTarget).trim();
   next.intervalMinutes = Math.max(1, Number(next.intervalMinutes || defaultSettings.intervalMinutes));
   next.maxDailyPosts = Math.max(1, Number(next.maxDailyPosts || defaultSettings.maxDailyPosts));
   next.minPostChars = Math.max(1, Number(next.minPostChars || defaultSettings.minPostChars));

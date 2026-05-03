@@ -6,11 +6,17 @@ function cashtag(symbol) { return `$${String(symbol || '').replace(/^\$/, '').to
 function compactText(text) {
   return String(text || '').replace(/^```[a-z]*\s*/i, '').replace(/```$/i, '').replace(/[“”]/g, '').trim();
 }
-function renderTemplate(template, pack) {
+function renderTemplate(template, pack, settings = getSettings()) {
   const lead = pack.trio.lead.symbol;
   const peer = pack.trio.peer.symbol;
   const anchor = pack.trio.anchor.symbol;
   const vars = {
+    JOB_NAME: settings.jobName || '',
+    JOB_DESCRIPTION: settings.jobDescription || '',
+    LANGUAGE: settings.language || '',
+    STYLE_GUIDE: settings.styleGuide || '',
+    CONTENT_SOURCE: settings.contentSource || '',
+    POST_TARGET: settings.postTarget || '',
     LEAD: lead,
     PEER: peer,
     ANCHOR: anchor,
@@ -76,7 +82,7 @@ async function generatePost(pack) {
   const settings = getSettings();
   const prompt = getActivePrompt();
   if (!prompt) throw new Error('no_active_prompt');
-  const renderedPrompt = renderTemplate(prompt.content, pack);
+  const renderedPrompt = renderTemplate(prompt.content, pack, settings);
   const provider = String(settings.llmProvider || config.llmProvider || 'mock').toLowerCase();
   const text = provider === 'mock' ? mockGenerate(pack) : await callOpenAI(renderedPrompt, settings);
   const validation = validatePostText(text, pack, settings);

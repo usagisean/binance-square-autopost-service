@@ -16,7 +16,12 @@
     <label>Admin Token</label><input id="token" placeholder="如果服务配置了 ADMIN_TOKEN，在这里填" />
     <div style="height:10px"></div>
     <div id="status" class="muted">加载中...</div>
-    <label><input type="checkbox" id="enabled" style="width:auto"> 启用定时发布</label>
+    <label>Job 名称</label><input id="jobName" placeholder="例如：Smart Money Autopost">
+    <label>Job 说明</label><textarea id="jobDescription" style="min-height:80px" placeholder="这条任务要做什么、面向谁、发什么内容"></textarea>
+    <label>语言</label><input id="language" placeholder="zh-CN / en-US">
+    <label>风格要求</label><textarea id="styleGuide" style="min-height:90px" placeholder="短句、交易员视角、不要模板腔..."></textarea>
+    <label><input type="checkbox" id="enabled" style="width:auto"> 启用定时任务</label>
+    <label>发布模式</label><select id="publishMode"><option value="preview">仅生成预览，不真实发帖</option><option value="live">真实发布到 Binance Square</option></select>
     <div class="row"><div><label>间隔分钟</label><input id="intervalMinutes" type="number" min="1"></div><div><label>每日上限</label><input id="maxDailyPosts" type="number" min="1"></div></div>
     <div class="row"><div><label>最短字符</label><input id="minPostChars" type="number"></div><div><label>最长字符</label><input id="maxPostChars" type="number"></div></div>
     <label>LLM Provider</label><select id="llmProvider"><option value="mock">mock 本地测试</option><option value="openai">OpenAI-compatible</option></select>
@@ -30,7 +35,7 @@
     <div style="height:14px"></div>
     <div class="row"><button onclick="saveSettings()">保存设置</button><button class="secondary" onclick="loadAll()">刷新</button></div>
     <div style="height:8px"></div>
-    <div class="row"><button onclick="run('dry-run')">Dry-run</button><button class="danger" onclick="run('publish')">立即发布</button></div>
+    <div class="row"><button onclick="run('dry-run')">生成预览</button><button class="danger" onclick="run('publish')">按当前模式执行</button></div>
     <div style="height:8px"></div><button class="secondary" style="width:100%" onclick="marketPack()">预览 Market Pack</button>
   </section>
   <main>
@@ -38,7 +43,7 @@
       <h2>Prompt 编辑</h2>
       <div class="row"><select id="promptSelect" onchange="selectPrompt()"></select><button class="secondary" onclick="newPrompt()">新建</button><button onclick="savePrompt()">保存 Prompt</button><button class="secondary" onclick="activatePrompt()">设为启用</button></div>
       <label>名称</label><input id="promptName">
-      <label>内容（可用变量：{{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}）</label>
+      <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}）</label>
       <textarea id="promptContent"></textarea>
     </section>
     <section class="card" style="margin-top:18px">
@@ -52,20 +57,20 @@
   </main>
 </div>
 <script>
-const $=id=>document.getElementById(id); let prompts=[];
+const $=id=>document.getElementById(id); let prompts=[]; let currentSettings={};
 $('token').value=localStorage.getItem('adminToken')||''; $('token').oninput=()=>localStorage.setItem('adminToken',$('token').value);
 function headers(){const t=$('token').value;return {'Content-Type':'application/json',...(t?{Authorization:'Bearer '+t}:{})}}
 async function api(path,opt={}){const r=await fetch(path,{...opt,headers:{...headers(),...(opt.headers||{})}});const j=await r.json();if(!r.ok||j.ok===false)throw new Error(j.error||r.statusText);return j}
 function out(x){$('output').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
 async function loadAll(){try{await loadStatus();await loadPrompts();await loadRuns()}catch(e){out('加载失败：'+e.message)}}
-async function loadStatus(){const j=await api('/api/status');const s=j.settings;$('status').innerHTML=`<span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.apiKey?'ok':'bad'}">LLM Key ${j.llm.apiKey?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span>`;$('enabled').checked=!!s.enabled;$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider;$('openaiBaseUrl').value=s.openaiBaseUrl||j.llm.baseUrl||'';$('openaiModel').value=s.openaiModel||j.llm.model||'';$('openaiTemperature').value=s.openaiTemperature??j.llm.temperature??0.8;$('openaiMaxTokens').value=s.openaiMaxTokens??j.llm.maxTokens??180;$('openaiTimeoutMs').value=s.openaiTimeoutMs??j.llm.timeoutMs??45000;$('openaiApiKey').value='';$('binanceSquareOpenApiKey').value='';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',')}
-async function saveSettings(){const body={enabled:$('enabled').checked,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,openaiBaseUrl:$('openaiBaseUrl').value.trim(),openaiModel:$('openaiModel').value.trim(),openaiTemperature:+$('openaiTemperature').value,openaiMaxTokens:+$('openaiMaxTokens').value,openaiTimeoutMs:+$('openaiTimeoutMs').value,bannedSymbols:$('bannedSymbols').value.split(',').map(x=>x.trim()).filter(Boolean)};const secretBody={};if($('openaiApiKey').value.trim())secretBody.openaiApiKey=$('openaiApiKey').value.trim();if($('binanceSquareOpenApiKey').value.trim())secretBody.binanceSquareOpenApiKey=$('binanceSquareOpenApiKey').value.trim();const result={settings:await api('/api/settings',{method:'PUT',body:JSON.stringify(body)})};if(Object.keys(secretBody).length)result.secrets=await api('/api/secrets',{method:'PUT',body:JSON.stringify(secretBody)});out(result);await loadStatus()}
+async function loadStatus(){const j=await api('/api/status');const s=j.settings;currentSettings=s;$('status').innerHTML=`<span class="pill ${s.publishMode==='live'?'bad':'ok'}">模式 ${s.publishMode==='live'?'LIVE 真实发布':'PREVIEW 只预览'}</span><span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.apiKey?'ok':'bad'}">LLM Key ${j.llm.apiKey?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span>`;$('jobName').value=s.jobName||'';$('jobDescription').value=s.jobDescription||'';$('language').value=s.language||'';$('styleGuide').value=s.styleGuide||'';$('enabled').checked=!!s.enabled;$('publishMode').value=s.publishMode||'preview';$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider;$('openaiBaseUrl').value=s.openaiBaseUrl||j.llm.baseUrl||'';$('openaiModel').value=s.openaiModel||j.llm.model||'';$('openaiTemperature').value=s.openaiTemperature??j.llm.temperature??0.8;$('openaiMaxTokens').value=s.openaiMaxTokens??j.llm.maxTokens??180;$('openaiTimeoutMs').value=s.openaiTimeoutMs??j.llm.timeoutMs??45000;$('openaiApiKey').value='';$('binanceSquareOpenApiKey').value='';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',')}
+async function saveSettings(){const body={jobName:$('jobName').value.trim(),jobDescription:$('jobDescription').value.trim(),language:$('language').value.trim(),styleGuide:$('styleGuide').value.trim(),enabled:$('enabled').checked,publishMode:$('publishMode').value,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,openaiBaseUrl:$('openaiBaseUrl').value.trim(),openaiModel:$('openaiModel').value.trim(),openaiTemperature:+$('openaiTemperature').value,openaiMaxTokens:+$('openaiMaxTokens').value,openaiTimeoutMs:+$('openaiTimeoutMs').value,bannedSymbols:$('bannedSymbols').value.split(',').map(x=>x.trim()).filter(Boolean)};const secretBody={};if($('openaiApiKey').value.trim())secretBody.openaiApiKey=$('openaiApiKey').value.trim();if($('binanceSquareOpenApiKey').value.trim())secretBody.binanceSquareOpenApiKey=$('binanceSquareOpenApiKey').value.trim();const result={settings:await api('/api/settings',{method:'PUT',body:JSON.stringify(body)})};if(Object.keys(secretBody).length)result.secrets=await api('/api/secrets',{method:'PUT',body:JSON.stringify(secretBody)});out(result);await loadStatus()}
 async function loadPrompts(){const j=await api('/api/prompts');prompts=j.prompts;$('promptSelect').innerHTML=prompts.map(p=>`<option value="${p.id}">${p.active?'✅ ':''}${p.name}</option>`).join('');selectPrompt()}
 function selectPrompt(){const p=prompts.find(x=>x.id===$('promptSelect').value)||prompts[0];if(!p)return;$('promptName').value=p.name;$('promptContent').value=p.content}
 async function savePrompt(){const id=$('promptSelect').value;const body={name:$('promptName').value,content:$('promptContent').value};out(await api('/api/prompts/'+id,{method:'PUT',body:JSON.stringify(body)}));await loadPrompts()}
 async function activatePrompt(){const id=$('promptSelect').value;out(await api('/api/prompts/'+id+'/activate',{method:'POST'}));await loadPrompts()}
 async function newPrompt(){const body={name:'新 Prompt',content:$('promptContent').value,active:false};const j=await api('/api/prompts',{method:'POST',body:JSON.stringify(body)});out(j);await loadPrompts();$('promptSelect').value=j.prompt.id;selectPrompt()}
-async function run(mode){if(mode==='publish'&&!confirm('确认立即发布到 Binance Square？'))return;out('运行中...');const j=await api('/api/run',{method:'POST',body:JSON.stringify({mode})});out(j);await loadAll()}
+async function run(mode){if(mode==='publish'&&currentSettings.publishMode==='live'&&!confirm('当前是 LIVE 模式，确认真实发布到 Binance Square？'))return;out(currentSettings.publishMode==='live'&&mode==='publish'?'真实发布中...':'生成预览中...');const j=await api('/api/run',{method:'POST',body:JSON.stringify({mode})});out(j);await loadAll()}
 async function marketPack(){out('获取中...');out(await api('/api/market-pack',{method:'POST'}))}
 async function loadRuns(){const j=await api('/api/runs?limit=30');$('runs').innerHTML=j.runs.map(r=>`<div class="run"><div><span class="pill ${r.status==='published'?'ok':r.status==='error'?'bad':''}">${r.status}</span><span class="muted">${r.createdAt||''} · ${r.source||''} · ${r.lead||''}/${r.peer||''}/${r.anchor||''}</span></div>${r.postText?`<div class="post">${escapeHtml(r.postText)}</div>`:''}${r.url?`<a href="${r.url}" target="_blank">${r.url}</a>`:''}${r.error?`<div class="bad">${escapeHtml(r.error)}</div>`:''}</div>`).join('')}
 function escapeHtml(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}

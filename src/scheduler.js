@@ -23,7 +23,7 @@ async function tick() {
   running = true;
   saveSchedulerState({ running: true, nextRunAt: null });
   try {
-    await runOnce('publish', { trigger: 'scheduler' });
+    await runOnce(settings.publishMode === 'live' ? 'publish' : 'dry-run', { trigger: 'scheduler' });
   } finally {
     const lastRunAt = Date.now();
     saveSchedulerState({ running: false, lastRunAt, nextRunAt: computeNextRunAt(lastRunAt, getSettings()) });

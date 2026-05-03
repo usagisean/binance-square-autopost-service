@@ -41,6 +41,7 @@ const config = {
   port: envNumber('PORT', 8787),
   publicBaseUrl: env('PUBLIC_BASE_URL', 'http://127.0.0.1:8787'),
   adminToken: env('ADMIN_TOKEN', ''),
+  publishMode: env('PUBLISH_MODE', 'preview').toLowerCase(),
   llmProvider: env('LLM_PROVIDER', 'mock').toLowerCase(),
   openaiBaseUrl: env('OPENAI_BASE_URL', 'https://api.openai.com/v1').replace(/\/$/, ''),
   openaiApiKey: env('OPENAI_API_KEY', ''),

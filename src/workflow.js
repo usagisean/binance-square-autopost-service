@@ -29,9 +29,15 @@ async function runOnce(mode = 'dry-run', meta = {}) {
 
     generated = await generatePost(pack);
 
-    if (mode === 'dry-run') {
+    const livePublish = mode === 'publish' && settings.publishMode === 'live';
+    if (!livePublish) {
       return appendRun({
-        mode, status: 'dry-run', durationMs: Date.now() - startedAt, source: pack.source,
+        mode: mode === 'publish' ? 'preview' : mode,
+        requestedMode: mode,
+        publishMode: settings.publishMode,
+        status: 'preview',
+        durationMs: Date.now() - startedAt,
+        source: pack.source,
         lead: pack.trio.lead.symbol, peer: pack.trio.peer.symbol, anchor: pack.trio.anchor.symbol,
         postText: generated.text, promptId: generated.promptId, promptName: generated.promptName,
         facts: pack.facts, takeaways: pack.takeaways, meta

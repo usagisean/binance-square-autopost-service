@@ -4,7 +4,9 @@
 
 ## 功能
 
-- Web 后台编辑 Prompt、启停定时任务、手动 dry-run / 发布
+- Web 后台编辑 Prompt、启停定时任务、手动预览 / 发布
+- 默认 preview-only：定时任务只生成内容给你看，不真实发帖
+- 通用 Job 配置：Job 名称、说明、语言、风格、Prompt 模板、模型中转站都可配置
 - 定时发布，默认每 20 分钟检查一次
 - 每日发帖计数与上限
 - Binance futures 数据优先；遇到 451 或不可用时 fallback 到 `www.binance.com/api/v3` 现货数据
@@ -34,6 +36,17 @@ PORT=8787
 HOST=127.0.0.1
 ADMIN_TOKEN=change-me-long-random-token
 
+# 其他用户复制仓库后，改这几项就可以变成自己的任务
+JOB_NAME=Binance Square Market Autopost
+JOB_DESCRIPTION=基于真实 Binance 行情，生成有交易员视角的短帖。
+POST_LANGUAGE=zh-CN
+STYLE_GUIDE=短句、克制、有交易感；不要报告腔、模板腔、喊单腔。
+DEFAULT_PROMPT_FILE=
+
+# Preview by default: scheduler and web actions only generate content, not publish.
+# Change to live only after you finish testing.
+PUBLISH_MODE=preview
+
 LLM_PROVIDER=mock              # 本地测试用 mock；生产改成 openai
 OPENAI_BASE_URL=https://api.openai.com/v1  # 或你的中转站：https://relay.example.com/v1
 OPENAI_API_KEY=sk-...
@@ -48,7 +61,9 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
 
-生产发布前，后台里把 `LLM Provider` 从 `mock` 改成 `openai`，保存设置。
+默认 `PUBLISH_MODE=preview`：即使启用定时任务，也只会生成发帖内容并记录到“最近运行”，不会调用 Binance 发布接口。
+
+生产发布前，后台里把 `LLM Provider` 从 `mock` 改成 `openai`，保存设置。等你确认内容质量后，再把“发布模式”从 `preview` 切换到 `live`。
 
 ### OpenAI-compatible / 中转站配置
 
@@ -90,6 +105,33 @@ sudo journalctl -u binance-square-autopost -f
 HOST=127.0.0.1
 PORT=8787
 ```
+
+## 给其他用户的最小配置流程
+
+1. Fork/clone 仓库。
+2. `cp .env.example .env`。
+3. 修改：
+
+```env
+JOB_NAME=你的任务名称
+JOB_DESCRIPTION=你的发帖目标、主题、受众说明
+POST_LANGUAGE=zh-CN
+STYLE_GUIDE=你的文风要求
+OPENAI_BASE_URL=https://你的中转站/v1
+OPENAI_API_KEY=你的中转站 key
+OPENAI_MODEL=你的模型名
+BINANCE_SQUARE_OPENAPI_KEY=你的 Binance Square key
+PUBLISH_MODE=preview
+```
+
+4. 启动后先保持 `preview`，只看生成内容。
+5. 确认稳定后，再把发布模式切到 `live`。
+
+默认 Prompt 模板在 `templates/default-prompt.md`。如果用户想完全自定义模板，可以：
+
+- 在 Web 后台直接编辑 Prompt；或
+- 设置 `DEFAULT_PROMPT_FILE=/path/to/your-prompt.md` 后首次启动生成。
+
 
 ## API
 
