@@ -8,7 +8,7 @@ const { runOnce } = require('./workflow');
 const { buildMarketPack } = require('./marketPack');
 const { publisherStatus } = require('./publisher');
 const { getJson } = require('./httpClient');
-const { callOpenAIWithCandidate } = require('./generator');
+const { callOpenAIWithCandidate, effectiveMaxTokens } = require('./generator');
 const { sendTelegram } = require('./telegram');
 
 initStore();
@@ -169,17 +169,18 @@ async function handleApi(req, res, url) {
     const model = String(body.model || channel.models?.find(m => m.enabled !== false)?.id || '').trim();
     if (!model) throw new Error('missing_llm_model');
     const startedAt = Date.now();
-    const text = await callOpenAIWithCandidate('请只回复“连接正常”四个字。', {
+    const candidate = {
       channelId: channel.id,
       channelName: channel.name,
       apiKey: channel.apiKey,
       baseUrl: channel.baseUrl,
       model,
       temperature: channel.temperature,
-      maxTokens: Math.min(Number(channel.maxTokens || 64), 64),
+      maxTokens: Number(channel.maxTokens || 512),
       timeoutMs: channel.timeoutMs
-    });
-    return sendJson(res, 200, { ok: true, channelId: channel.id, channelName: channel.name, model, durationMs: Date.now() - startedAt, text });
+    };
+    const text = await callOpenAIWithCandidate('请只回复“连接正常”四个字。', candidate);
+    return sendJson(res, 200, { ok: true, channelId: channel.id, channelName: channel.name, model, durationMs: Date.now() - startedAt, maxTokensUsed: effectiveMaxTokens(candidate), text });
   }
   if (req.method === 'GET' && url.pathname === '/api/prompts') return sendJson(res, 200, { ok: true, prompts: listPrompts() });
   if (req.method === 'POST' && url.pathname === '/api/prompts') return sendJson(res, 200, { ok: true, prompt: createPrompt(await readBody(req)) });

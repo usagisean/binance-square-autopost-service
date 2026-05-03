@@ -69,27 +69,47 @@ function extractChoiceText(json) {
   return '';
 }
 
+function isReasoningLikeModel(model = '') {
+  return /(^|[/:_-])(gpt-5|o1|o3|o4|gpt-oss)/i.test(String(model || ''));
+}
+
+function effectiveMaxTokens(candidate = {}) {
+  const requested = Number(candidate.maxTokens ?? config.openaiMaxTokens);
+  const base = Number.isFinite(requested) && requested > 0 ? requested : Number(config.openaiMaxTokens || 180);
+  // GPT-5 / o-series compatible relays may spend part of max_tokens on hidden reasoning.
+  // Keep visible output short via post validation, but avoid content=null caused by too-small budgets.
+  if (isReasoningLikeModel(candidate.model)) return Math.max(base, 800);
+  return base;
+}
+
 async function callOpenAIWithCandidate(prompt, candidate) {
   if (!candidate?.apiKey) throw new Error('missing_openai_api_key');
   const baseUrl = String(candidate.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const url = `${baseUrl}/chat/completions`;
-  const payload = {
-    model: candidate.model || config.openaiModel,
-    temperature: Number(candidate.temperature ?? config.openaiTemperature ?? 0.8),
-    messages: [
-      { role: 'system', content: '你只输出最终可发布的纯文本短帖，不解释过程。' },
-      { role: 'user', content: prompt }
-    ]
+  const run = async (maxTokens) => {
+    const payload = {
+      model: candidate.model || config.openaiModel,
+      temperature: Number(candidate.temperature ?? config.openaiTemperature ?? 0.8),
+      messages: [
+        { role: 'system', content: '你只输出最终可发布的纯文本短帖，不解释过程。' },
+        { role: 'user', content: prompt }
+      ]
+    };
+    if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_tokens = maxTokens;
+    const json = await postJson(url, payload, {
+      headers: { Authorization: `Bearer ${candidate.apiKey}` },
+      timeoutMs: Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000)
+    });
+    return { json, text: compactText(extractChoiceText(json)) };
   };
-  const maxTokens = Number(candidate.maxTokens ?? config.openaiMaxTokens);
-  if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_tokens = maxTokens;
-  const json = await postJson(url, payload, {
-    headers: { Authorization: `Bearer ${candidate.apiKey}` },
-    timeoutMs: Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000)
-  });
-  const text = extractChoiceText(json);
+
+  const firstMaxTokens = effectiveMaxTokens(candidate);
+  let { json, text } = await run(firstMaxTokens);
+  if (!text && isReasoningLikeModel(candidate.model) && firstMaxTokens < 1200) {
+    ({ json, text } = await run(1200));
+  }
   if (!text) throw new Error(`llm_empty_response:${JSON.stringify(json).slice(0, 300)}`);
-  return compactText(text);
+  return text;
 }
 
 function validatePostText(text, pack, settings = getSettings()) {
@@ -158,4 +178,4 @@ async function generatePost(pack) {
   return { text: validation.text, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: [{ channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, ok: true }] };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens };
