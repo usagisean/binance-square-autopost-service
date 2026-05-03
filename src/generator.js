@@ -86,7 +86,8 @@ async function callOpenAIWithCandidate(prompt, candidate) {
   if (!candidate?.apiKey) throw new Error('missing_openai_api_key');
   const baseUrl = String(candidate.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const url = `${baseUrl}/chat/completions`;
-  const run = async (maxTokens) => {
+  const useCompletionTokenParam = isReasoningLikeModel(candidate.model);
+  const run = async (maxTokens, tokenParam = useCompletionTokenParam ? 'max_completion_tokens' : 'max_tokens') => {
     const payload = {
       model: candidate.model || config.openaiModel,
       temperature: Number(candidate.temperature ?? config.openaiTemperature ?? 0.8),
@@ -95,11 +96,20 @@ async function callOpenAIWithCandidate(prompt, candidate) {
         { role: 'user', content: prompt }
       ]
     };
-    if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_tokens = maxTokens;
-    const json = await postJson(url, payload, {
-      headers: { Authorization: `Bearer ${candidate.apiKey}` },
-      timeoutMs: Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000)
-    });
+    if (Number.isFinite(maxTokens) && maxTokens > 0) payload[tokenParam] = maxTokens;
+    let json;
+    try {
+      json = await postJson(url, payload, {
+        headers: { Authorization: `Bearer ${candidate.apiKey}` },
+        timeoutMs: Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000)
+      });
+    } catch (err) {
+      // Some OpenAI-compatible relays do not support max_completion_tokens yet.
+      if (tokenParam === 'max_completion_tokens' && /http_400|unsupported|unknown|max_completion_tokens/i.test(err.message || '')) {
+        return run(maxTokens, 'max_tokens');
+      }
+      throw err;
+    }
     return { json, text: compactText(extractChoiceText(json)) };
   };
 

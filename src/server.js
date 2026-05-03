@@ -64,13 +64,13 @@ function findLlmChannel(channelId) {
   return { cfg, channel };
 }
 
-function maskedSecrets() {
+function maskedSecrets({ reveal = false } = {}) {
   const secrets = getSecrets();
   return {
-    openaiApiKey: masked(secrets.openaiApiKey),
-    binanceSquareOpenApiKey: masked(secrets.binanceSquareOpenApiKey),
-    telegramBotToken: masked(secrets.telegramBotToken),
-    telegramChatId: secrets.telegramChatId ? 'configured' : '',
+    openaiApiKey: reveal ? secrets.openaiApiKey : masked(secrets.openaiApiKey),
+    binanceSquareOpenApiKey: reveal ? secrets.binanceSquareOpenApiKey : masked(secrets.binanceSquareOpenApiKey),
+    telegramBotToken: reveal ? secrets.telegramBotToken : masked(secrets.telegramBotToken),
+    telegramChatId: reveal ? secrets.telegramChatId : (secrets.telegramChatId ? 'configured' : ''),
     telegramConfigured: !!(secrets.telegramBotToken && secrets.telegramChatId)
   };
 }
@@ -126,10 +126,10 @@ async function handleApi(req, res, url) {
   if (!requireAuth(req, res)) return;
   if (req.method === 'GET' && url.pathname === '/api/settings') return sendJson(res, 200, { ok: true, settings: getSettings() });
   if (req.method === 'PUT' && url.pathname === '/api/settings') return sendJson(res, 200, { ok: true, settings: saveSettings(await readBody(req)) });
-  if (req.method === 'GET' && url.pathname === '/api/secrets') return sendJson(res, 200, { ok: true, secrets: maskedSecrets() });
+  if (req.method === 'GET' && url.pathname === '/api/secrets') return sendJson(res, 200, { ok: true, secrets: maskedSecrets({ reveal: url.searchParams.get('reveal') === '1' }) });
   if (req.method === 'PUT' && url.pathname === '/api/secrets') {
     saveSecrets(await readBody(req));
-    return sendJson(res, 200, { ok: true, secrets: maskedSecrets() });
+    return sendJson(res, 200, { ok: true, secrets: maskedSecrets({ reveal: true }) });
   }
   if (req.method === 'POST' && url.pathname === '/api/telegram/test') {
     const result = await sendTelegram(`✅ Binance Square Autopost Telegram 测试成功\n时间：${new Date().toISOString()}`);
@@ -169,18 +169,35 @@ async function handleApi(req, res, url) {
     const model = String(body.model || channel.models?.find(m => m.enabled !== false)?.id || '').trim();
     if (!model) throw new Error('missing_llm_model');
     const startedAt = Date.now();
-    const candidate = {
-      channelId: channel.id,
-      channelName: channel.name,
-      apiKey: channel.apiKey,
-      baseUrl: channel.baseUrl,
-      model,
-      temperature: channel.temperature,
-      maxTokens: Number(channel.maxTokens || 512),
-      timeoutMs: channel.timeoutMs
-    };
-    const text = await callOpenAIWithCandidate('请只回复“连接正常”四个字。', candidate);
-    return sendJson(res, 200, { ok: true, channelId: channel.id, channelName: channel.name, model, durationMs: Date.now() - startedAt, maxTokensUsed: effectiveMaxTokens(candidate), text });
+    const fallbackEnabled = body.fallback !== false;
+    const modelIds = [model];
+    if (fallbackEnabled) {
+      for (const m of (channel.models || []).filter(m => m.enabled !== false).sort((a, b) => Number(a.priority || 1) - Number(b.priority || 1))) {
+        const id = String(m.id || '').trim();
+        if (id && !modelIds.includes(id)) modelIds.push(id);
+      }
+    }
+    const attempts = [];
+    for (const modelId of modelIds.slice(0, 10)) {
+      const candidate = {
+        channelId: channel.id,
+        channelName: channel.name,
+        apiKey: channel.apiKey,
+        baseUrl: channel.baseUrl,
+        model: modelId,
+        temperature: channel.temperature,
+        maxTokens: Number(channel.maxTokens || 512),
+        timeoutMs: channel.timeoutMs
+      };
+      try {
+        const text = await callOpenAIWithCandidate('请只回复“连接正常”四个字。', candidate);
+        attempts.push({ model: modelId, ok: true, maxTokensUsed: effectiveMaxTokens(candidate) });
+        return sendJson(res, 200, { ok: true, channelId: channel.id, channelName: channel.name, model: modelId, requestedModel: model, fallbackUsed: modelId !== model, durationMs: Date.now() - startedAt, maxTokensUsed: effectiveMaxTokens(candidate), text, attempts });
+      } catch (err) {
+        attempts.push({ model: modelId, ok: false, maxTokensUsed: effectiveMaxTokens(candidate), error: err.message || String(err) });
+      }
+    }
+    throw new Error(`llm_test_all_models_failed:${attempts.map(a => `${a.model}:${a.error}`).join(' | ')}`);
   }
   if (req.method === 'GET' && url.pathname === '/api/prompts') return sendJson(res, 200, { ok: true, prompts: listPrompts() });
   if (req.method === 'POST' && url.pathname === '/api/prompts') return sendJson(res, 200, { ok: true, prompt: createPrompt(await readBody(req)) });
