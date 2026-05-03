@@ -15,7 +15,6 @@ jobs:
           test -n "${{ secrets.VPS_HOST }}" || (echo "Missing secret: VPS_HOST" && exit 1)
           test -n "${{ secrets.VPS_USER }}" || (echo "Missing secret: VPS_USER" && exit 1)
           test -n "${{ secrets.VPS_SSH_KEY }}" || (echo "Missing secret: VPS_SSH_KEY" && exit 1)
-          test -n "${{ secrets.VPS_ENV }}" || (echo "Missing secret: VPS_ENV" && exit 1)
 
       - name: Prepare SSH
         shell: bash
@@ -63,21 +62,12 @@ jobs:
             git -C "$APP_DIR" reset --hard origin/main
           fi
           mkdir -p "$APP_DIR/data"
+          if [ ! -f "$APP_DIR/.env" ]; then
+            cp "$APP_DIR/.env.docker.example" "$APP_DIR/.env"
+            chmod 600 "$APP_DIR/.env"
+            echo "Created $APP_DIR/.env from .env.docker.example. Edit it on the VPS, then rerun this workflow."
+          fi
           REMOTE
-
-      - name: Upload environment file
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
-          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR || '/opt/binance-square-autopost-service' }}
-          VPS_ENV: ${{ secrets.VPS_ENV }}
-        run: |
-          set -euo pipefail
-          umask 077
-          printf '%s\n' "$VPS_ENV" > /tmp/binance-square-autopost.env
-          scp -i ~/.ssh/deploy_key -P "$VPS_PORT" /tmp/binance-square-autopost.env "$VPS_USER@$VPS_HOST:$VPS_APP_DIR/.env"
 
       - name: Start or update service
         shell: bash

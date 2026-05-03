@@ -274,26 +274,102 @@ Nginx 示例：`deploy/nginx/binance-square-autopost.conf.example`
 
 ## GitHub Actions 自动部署到 VPS
 
-仓库包含 `.github/workflows/deploy.yml`。它会通过 SSH 登录 VPS，自动：
+仓库包含 `.github/workflows/deploy.yml`。它只负责部署代码和重启 Docker，不保存/覆盖你的业务配置。
+
+部署时会通过 SSH 登录 VPS，自动：
 
 1. 安装/检查 `git`、`docker`；
 2. clone/pull 当前仓库；
-3. 把 GitHub Secret `VPS_ENV` 写成 VPS 上的 `.env`；
+3. 如果 VPS 上还没有 `.env`，复制 `.env.docker.example` 生成一个初始 `.env`；
 4. 执行 `docker compose up -d --build`；
 5. 调用 `/health` 做健康检查。
 
-### 你需要准备
+### GitHub Secrets
 
-你至少需要：
+进入仓库：
 
-- VPS IP
-- VPS SSH 用户，推荐 `root`；非 root 用户需要免密 sudo
-- VPS SSH 端口，默认 `22`
-- 一对专门给 GitHub Actions 用的 SSH key
+`Settings` → `Secrets and variables` → `Actions` → `New repository secret`
+
+只需要添加这些 VPS 登录信息：
+
+```text
+VPS_HOST=你的 VPS IP
+VPS_USER=root
+VPS_PORT=22
+VPS_APP_DIR=/opt/binance-square-autopost-service
+VPS_SSH_KEY=你的 SSH 私钥内容
+```
+
+不需要配置 `VPS_ENV`。`.env` 放在 VPS 本地，后续改配置不需要改 GitHub Secrets。
+
+### 首次部署流程
+
+1. 在 GitHub 手动运行：
+
+```text
+Actions -> Deploy to VPS -> Run workflow
+```
+
+第一次运行会在 VPS 上创建：
+
+```text
+/opt/binance-square-autopost-service/.env
+```
+
+2. SSH 到 VPS 编辑 `.env`：
+
+```bash
+ssh root@YOUR_VPS_IP
+cd /opt/binance-square-autopost-service
+nano .env
+```
+
+如果 DNS 已经解析到 VPS，并想启用内置 Caddy HTTPS 反代，至少改：
+
+```env
+COMPOSE_PROFILES=caddy
+DOMAIN=你的完整域名
+PUBLIC_BASE_URL=https://你的完整域名
+ADMIN_TOKEN=换成一个长随机字符串
+PUBLISH_MODE=preview
+```
+
+测试阶段建议保持：
+
+```env
+LLM_PROVIDER=mock
+PUBLISH_MODE=preview
+```
+
+3. 保存 `.env` 后，重新运行一次：
+
+```text
+Actions -> Deploy to VPS -> Run workflow
+```
+
+或者直接在 VPS 上执行：
+
+```bash
+cd /opt/binance-square-autopost-service
+docker compose up -d --build
+```
+
+### 以后怎么改配置
+
+以后改模型、中转站、Prompt、域名、发布模式，都直接在 VPS 上改：
+
+```bash
+ssh root@YOUR_VPS_IP
+cd /opt/binance-square-autopost-service
+nano .env
+docker compose up -d
+```
+
+无需重新配置 GitHub Secrets。只有代码更新时，才重新跑 GitHub Actions 部署。
 
 ### 生成部署 SSH key
 
-在你的本机执行：
+如果你还没有专用部署 key，在本机执行：
 
 ```bash
 ssh-keygen -t ed25519 -C "github-actions-binance-autopost" -f ~/.ssh/binance_autopost_actions
@@ -311,112 +387,23 @@ cat ~/.ssh/binance_autopost_actions.pub | ssh root@YOUR_VPS_IP 'mkdir -p ~/.ssh 
 ssh -i ~/.ssh/binance_autopost_actions root@YOUR_VPS_IP 'echo ok'
 ```
 
-### GitHub Secrets
-
-进入仓库：
-
-`Settings` → `Secrets and variables` → `Actions` → `New repository secret`
-
-添加：
-
-```text
-VPS_HOST=你的 VPS IP
-VPS_USER=root
-VPS_PORT=22
-VPS_APP_DIR=/opt/binance-square-autopost-service
-```
-
 `VPS_SSH_KEY` 填私钥内容：
 
 ```bash
 cat ~/.ssh/binance_autopost_actions
 ```
 
-`VPS_ENV` 填完整 `.env` 内容。测试阶段建议：
+如果你已经有可用的本机 SSH key，也可以复用那把 key。
 
-```env
-HOST_PORT=8787
-HOST=0.0.0.0
-PORT=8787
-PUBLIC_BASE_URL=http://YOUR_VPS_IP:8787
-ADMIN_TOKEN=change-me-long-random-token
+### 域名与 HTTPS
 
-PUBLISH_MODE=preview
-
-JOB_NAME=Binance Square Market Autopost
-JOB_DESCRIPTION=基于真实 Binance 行情，生成有交易员视角的短帖。
-POST_LANGUAGE=zh-CN
-STYLE_GUIDE=短句、克制、有交易感；不要报告腔、模板腔、喊单腔。
-CONTENT_SOURCE=binance-market-pack
-POST_TARGET=binance-square
-DEFAULT_PROMPT_FILE=
-
-LLM_PROVIDER=mock
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4.1-mini
-OPENAI_TEMPERATURE=0.8
-OPENAI_MAX_TOKENS=180
-OPENAI_TIMEOUT_MS=45000
-
-BINANCE_SQUARE_OPENAPI_KEY=
-
-HTTPS_PROXY=
-HTTP_PROXY=
-NO_PROXY=localhost,127.0.0.1,::1
-
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-```
-
-等 preview 链路跑通后，再把 `VPS_ENV` 改成你的真实中转站和 key：
-
-```env
-LLM_PROVIDER=openai
-OPENAI_BASE_URL=https://你的中转站/v1
-OPENAI_API_KEY=
-OPENAI_MODEL=你的模型名
-```
-
-真正发帖前最后才改：
-
-```env
-PUBLISH_MODE=live
-BINANCE_SQUARE_OPENAPI_KEY=
-```
-
-### 触发部署
-
-方式一：手动触发
-
-`Actions` → `Deploy to VPS` → `Run workflow`
-
-方式二：push 到 `main` 自动触发。
-
-### 注意
-
-- `VPS_ENV` 里可以放真实 API key，但它会存放在 GitHub Secrets 和 VPS `.env`。如果你不想把业务 key 放 GitHub，就先让 `VPS_ENV` 保持 mock/preview，部署后到 Web 后台手动填写 key。
-- 域名和 HTTPS 不在 GitHub Actions 里配置。域名 DNS 指向 VPS 后，在 VPS 上配置 Caddy/Nginx 反代即可。
-
-### 用内置 Caddy 自动绑定域名
-
-如果 DNS 已经把域名解析到 VPS，可以直接启用 compose 里的 Caddy profile。
-
-在 GitHub Secret `VPS_ENV` 里加/改：
+如果使用内置 Caddy：
 
 ```env
 COMPOSE_PROFILES=caddy
-DOMAIN=bnsquare.your-domain.example
-PUBLIC_BASE_URL=https://bnsquare.your-domain.example
-HOST_PORT=8787
+DOMAIN=你的完整域名
+PUBLIC_BASE_URL=https://你的完整域名
 ```
-
-部署后会启动两个容器：
-
-- `binance-square-autopost-service`：应用容器
-- `binance-square-autopost-caddy`：HTTPS 反代容器
-
-Caddy 会监听 VPS 的 `80/443`，并反代到 compose 网络里的 `app:8787`。
 
 VPS 防火墙/安全组需要放行：
 
@@ -433,5 +420,6 @@ VPS 防火墙/安全组需要放行：
 首次部署后访问：
 
 ```text
-https://bnsquare.your-domain.example
+https://你的完整域名
 ```
+
