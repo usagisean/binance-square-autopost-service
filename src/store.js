@@ -10,7 +10,8 @@ const paths = {
   counter: path.join(DATA_DIR, 'daily_counter.json'),
   cache: path.join(DATA_DIR, 'market_pack_cache.json'),
   scheduler: path.join(DATA_DIR, 'scheduler_state.json'),
-  secrets: path.join(DATA_DIR, 'secrets.json')
+  secrets: path.join(DATA_DIR, 'secrets.json'),
+  llmConfig: path.join(DATA_DIR, 'llm_config.json')
 };
 
 const defaultSettings = {
@@ -131,6 +132,137 @@ function saveSecrets(patch = {}) {
   return getSecrets();
 }
 
+
+function normalizeModelList(models = []) {
+  const seen = new Set();
+  return (Array.isArray(models) ? models : String(models || '').split(/\r?\n|,/))
+    .map((m, idx) => typeof m === 'string' ? { id: m, priority: idx + 1, enabled: true } : m)
+    .map((m, idx) => ({
+      id: String(m?.id || m?.name || '').trim(),
+      priority: Math.max(1, Number(m?.priority || idx + 1)),
+      enabled: m?.enabled !== false
+    }))
+    .filter(m => m.id && !seen.has(m.id) && seen.add(m.id))
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 50);
+}
+
+function defaultLlmConfig() {
+  const secrets = getSecrets();
+  return {
+    channels: [{
+      id: 'primary',
+      name: 'Primary OpenAI-compatible',
+      baseUrl: config.openaiBaseUrl,
+      apiKey: secrets.openaiApiKey || config.openaiApiKey || '',
+      enabled: true,
+      priority: 1,
+      temperature: config.openaiTemperature,
+      maxTokens: config.openaiMaxTokens,
+      timeoutMs: config.openaiTimeoutMs,
+      models: normalizeModelList([{ id: config.openaiModel, priority: 1, enabled: true }]),
+      updatedAt: nowIso()
+    }],
+    maxFallbackModels: 10,
+    updatedAt: nowIso()
+  };
+}
+
+function normalizeLlmConfig(raw = {}) {
+  const fallback = defaultLlmConfig();
+  const seenChannelIds = new Set();
+  const channels = (Array.isArray(raw.channels) && raw.channels.length ? raw.channels : fallback.channels).map((ch, idx) => {
+    let channelId = String(ch.id || `channel_${idx + 1}`).trim().replace(/[^a-zA-Z0-9_-]/g, '_') || `channel_${idx + 1}`;
+    if (seenChannelIds.has(channelId)) channelId = `${channelId}_${idx + 1}`;
+    seenChannelIds.add(channelId);
+    return {
+      id: channelId,
+      name: String(ch.name || ch.id || `Channel ${idx + 1}`).trim(),
+      baseUrl: String(ch.baseUrl || config.openaiBaseUrl).trim().replace(/\/+$/, ''),
+      apiKey: String(ch.apiKey || '').trim(),
+      enabled: ch.enabled !== false,
+      priority: Math.max(1, Number(ch.priority || idx + 1)),
+      temperature: Math.max(0, Math.min(2, Number(ch.temperature ?? config.openaiTemperature))),
+      maxTokens: Math.max(1, Number(ch.maxTokens || config.openaiMaxTokens)),
+      timeoutMs: Math.max(5000, Number(ch.timeoutMs || config.openaiTimeoutMs)),
+      models: normalizeModelList(ch.models),
+      updatedAt: ch.updatedAt || nowIso()
+    };
+  }).sort((a, b) => a.priority - b.priority);
+  return {
+    channels,
+    maxFallbackModels: Math.max(1, Math.min(10, Number(raw.maxFallbackModels || 10))),
+    updatedAt: raw.updatedAt || nowIso()
+  };
+}
+
+function getLlmConfig({ revealKeys = false } = {}) {
+  const cfg = normalizeLlmConfig(readJson(paths.llmConfig, null) || defaultLlmConfig());
+  return {
+    ...cfg,
+    channels: cfg.channels.map(ch => ({
+      ...ch,
+      apiKey: revealKeys ? ch.apiKey : '',
+      apiKeyMasked: ch.apiKey ? (ch.apiKey.length <= 10 ? `${ch.apiKey.slice(0, 2)}...${ch.apiKey.slice(-2)}` : `${ch.apiKey.slice(0, 5)}...${ch.apiKey.slice(-4)}`) : '',
+      hasApiKey: !!ch.apiKey
+    }))
+  };
+}
+
+function saveLlmConfig(next = {}) {
+  const current = normalizeLlmConfig(readJson(paths.llmConfig, null) || defaultLlmConfig());
+  const currentById = new Map(current.channels.map(ch => [ch.id, ch]));
+  const incoming = Array.isArray(next.channels) ? next.channels.map((ch, idx) => {
+    const rawId = String(ch?.id || `channel_${idx + 1}`).trim().replace(/[^a-zA-Z0-9_-]/g, '_') || `channel_${idx + 1}`;
+    const previous = currentById.get(rawId);
+    const hasNewKey = Object.prototype.hasOwnProperty.call(ch || {}, 'apiKey') && String(ch.apiKey || '').trim();
+    const clearKey = ch?.clearApiKey === true;
+    return {
+      ...ch,
+      id: rawId,
+      apiKey: clearKey ? '' : (hasNewKey ? String(ch.apiKey || '').trim() : (previous?.apiKey || ''))
+    };
+  }) : current.channels;
+  const cfg = normalizeLlmConfig({ ...next, channels: incoming, updatedAt: nowIso() });
+  writeJson(paths.llmConfig, cfg);
+  return getLlmConfig({ revealKeys: true });
+}
+
+function setLlmChannelModels(channelId, models = []) {
+  const cfg = normalizeLlmConfig(readJson(paths.llmConfig, null) || defaultLlmConfig());
+  const idx = cfg.channels.findIndex(ch => ch.id === channelId);
+  if (idx === -1) throw new Error('llm_channel_not_found');
+  cfg.channels[idx].models = normalizeModelList(models);
+  cfg.channels[idx].updatedAt = nowIso();
+  cfg.updatedAt = nowIso();
+  writeJson(paths.llmConfig, cfg);
+  return getLlmConfig({ revealKeys: true });
+}
+
+function getLlmCandidates() {
+  const cfg = normalizeLlmConfig(readJson(paths.llmConfig, null) || defaultLlmConfig());
+  const candidates = [];
+  for (const channel of cfg.channels.filter(ch => ch.enabled).sort((a, b) => a.priority - b.priority)) {
+    for (const model of normalizeModelList(channel.models).filter(m => m.enabled).sort((a, b) => a.priority - b.priority)) {
+      if (!channel.apiKey || !channel.baseUrl || !model.id) continue;
+      candidates.push({
+        channelId: channel.id,
+        channelName: channel.name,
+        baseUrl: channel.baseUrl,
+        apiKey: channel.apiKey,
+        model: model.id,
+        temperature: channel.temperature,
+        maxTokens: channel.maxTokens,
+        timeoutMs: channel.timeoutMs,
+        channelPriority: channel.priority,
+        modelPriority: model.priority
+      });
+      if (candidates.length >= cfg.maxFallbackModels) return candidates;
+    }
+  }
+  return candidates;
+}
+
 function listPrompts() {
   return readJson(paths.prompts, []);
 }
@@ -230,6 +362,10 @@ module.exports = {
   saveSettings,
   getSecrets,
   saveSecrets,
+  getLlmConfig,
+  saveLlmConfig,
+  setLlmChannelModels,
+  getLlmCandidates,
   listPrompts,
   getActivePrompt,
   createPrompt,

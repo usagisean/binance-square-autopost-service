@@ -1,6 +1,6 @@
 const { postJson } = require('./httpClient');
 const { config } = require('./config');
-const { getSettings, getActivePrompt, getSecrets } = require('./store');
+const { getSettings, getActivePrompt, getSecrets, getLlmCandidates } = require('./store');
 
 function cashtag(symbol) { return `$${String(symbol || '').replace(/^\$/, '').toUpperCase()}`; }
 function compactText(text) {
@@ -42,23 +42,52 @@ async function callOpenAI(prompt, settings) {
   const secrets = getSecrets();
   const apiKey = secrets.openaiApiKey;
   if (!apiKey) throw new Error('missing_openai_api_key');
-  const baseUrl = String(settings.openaiBaseUrl || config.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  return callOpenAIWithCandidate(prompt, {
+    channelId: 'legacy',
+    channelName: 'Legacy settings',
+    apiKey,
+    baseUrl: settings.openaiBaseUrl || config.openaiBaseUrl || 'https://api.openai.com/v1',
+    model: settings.openaiModel || config.openaiModel,
+    temperature: settings.openaiTemperature ?? config.openaiTemperature ?? 0.8,
+    maxTokens: settings.openaiMaxTokens ?? config.openaiMaxTokens,
+    timeoutMs: settings.openaiTimeoutMs || config.openaiTimeoutMs || 45000
+  });
+}
+
+function extractChoiceText(json) {
+  const choice = json?.choices?.[0];
+  const content = choice?.message?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(part => {
+      if (typeof part === 'string') return part;
+      return part?.text || part?.content || '';
+    }).join('');
+  }
+  if (typeof choice?.text === 'string') return choice.text;
+  if (typeof json?.output_text === 'string') return json.output_text;
+  return '';
+}
+
+async function callOpenAIWithCandidate(prompt, candidate) {
+  if (!candidate?.apiKey) throw new Error('missing_openai_api_key');
+  const baseUrl = String(candidate.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const url = `${baseUrl}/chat/completions`;
   const payload = {
-    model: settings.openaiModel || config.openaiModel,
-    temperature: Number(settings.openaiTemperature ?? config.openaiTemperature ?? 0.8),
+    model: candidate.model || config.openaiModel,
+    temperature: Number(candidate.temperature ?? config.openaiTemperature ?? 0.8),
     messages: [
       { role: 'system', content: '你只输出最终可发布的纯文本短帖，不解释过程。' },
       { role: 'user', content: prompt }
     ]
   };
-  const maxTokens = Number(settings.openaiMaxTokens ?? config.openaiMaxTokens);
+  const maxTokens = Number(candidate.maxTokens ?? config.openaiMaxTokens);
   if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_tokens = maxTokens;
   const json = await postJson(url, payload, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    timeoutMs: Number(settings.openaiTimeoutMs || config.openaiTimeoutMs || 45000)
+    headers: { Authorization: `Bearer ${candidate.apiKey}` },
+    timeoutMs: Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000)
   });
-  const text = json?.choices?.[0]?.message?.content;
+  const text = extractChoiceText(json);
   if (!text) throw new Error(`llm_empty_response:${JSON.stringify(json).slice(0, 300)}`);
   return compactText(text);
 }
@@ -84,10 +113,49 @@ async function generatePost(pack) {
   if (!prompt) throw new Error('no_active_prompt');
   const renderedPrompt = renderTemplate(prompt.content, pack, settings);
   const provider = String(settings.llmProvider || config.llmProvider || 'mock').toLowerCase();
-  const text = provider === 'mock' ? mockGenerate(pack) : await callOpenAI(renderedPrompt, settings);
+  if (provider === 'mock') {
+    const text = mockGenerate(pack);
+    const validation = validatePostText(text, pack, settings);
+    if (!validation.ok) throw new Error(`post_validation_failed:${validation.errors.join(',')}:text=${validation.text}`);
+    return { text: validation.text, promptId: prompt.id, promptName: prompt.name, provider, model: 'mock', renderedPrompt, attempts: [{ provider, model: 'mock', ok: true }] };
+  }
+
+  const candidates = getLlmCandidates();
+  const attempts = [];
+  if (candidates.length) {
+    for (const candidate of candidates) {
+      const label = `${candidate.channelName || candidate.channelId}/${candidate.model}`;
+      try {
+        const text = await callOpenAIWithCandidate(renderedPrompt, candidate);
+        const validation = validatePostText(text, pack, settings);
+        if (!validation.ok) {
+          attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: false, error: `post_validation_failed:${validation.errors.join(',')}`, text: validation.text });
+          continue;
+        }
+        attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: true });
+        return {
+          text: validation.text,
+          promptId: prompt.id,
+          promptName: prompt.name,
+          provider,
+          channelId: candidate.channelId,
+          channelName: candidate.channelName,
+          model: candidate.model,
+          renderedPrompt,
+          attempts
+        };
+      } catch (err) {
+        attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: false, error: err.message || String(err) });
+        console.warn(`[llm] candidate failed: ${label}: ${err.message || err}`);
+      }
+    }
+    throw new Error(`llm_all_candidates_failed:${attempts.map(a => `${a.channelName || a.channelId}/${a.model}:${a.error}`).join(' | ')}`);
+  }
+
+  const text = await callOpenAI(renderedPrompt, settings);
   const validation = validatePostText(text, pack, settings);
   if (!validation.ok) throw new Error(`post_validation_failed:${validation.errors.join(',')}:text=${validation.text}`);
-  return { text: validation.text, promptId: prompt.id, promptName: prompt.name, provider, model: provider === 'mock' ? 'mock' : (settings.openaiModel || config.openaiModel), renderedPrompt };
+  return { text: validation.text, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: [{ channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, ok: true }] };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate };

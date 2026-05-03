@@ -5,6 +5,7 @@
 ## 功能
 
 - Web 后台编辑 Prompt、启停定时任务、手动预览 / 发布
+- Web 后台配置 OpenAI-compatible 渠道、API Key、拉取 `/models`、测试模型、设置最多 10 个 fallback 优先级
 - 默认 preview-only：定时任务只生成内容给你看，不真实发帖
 - 通用 Job 配置：Job 名称、说明、语言、风格、Prompt 模板、模型中转站都可配置
 - 定时发布，默认每 20 分钟检查一次
@@ -63,7 +64,7 @@ TELEGRAM_CHAT_ID=...
 
 默认 `PUBLISH_MODE=preview`：即使启用定时任务，也只会生成发帖内容并记录到“最近运行”，不会调用 Binance 发布接口。
 
-生产发布前，后台里把 `LLM Provider` 从 `mock` 改成 `openai`，保存设置。等你确认内容质量后，再把“发布模式”从 `preview` 切换到 `live`。
+生产发布前，后台里把 `LLM Provider` 从 `mock` 改成 `openai`，保存设置。然后在“模型渠道配置”里填中转站 Base URL、API Key 和模型优先级。等你确认内容质量后，再把“发布模式”从 `preview` 切换到 `live`。
 
 ### OpenAI-compatible / 中转站配置
 
@@ -82,7 +83,28 @@ OPENAI_API_KEY=
 OPENAI_MODEL=中转站支持的模型名
 ```
 
-这些非敏感项也可以在 Web 后台编辑；API Key / Binance Key 也可以在后台填，后台会保存到 `data/secrets.json`。`data/secrets.json` 已被 `.gitignore` 忽略，不会进 Git。
+推荐直接在 Web 后台的“模型渠道配置”中维护：
+
+- 渠道名、Base URL、API Key
+- 从 `{OPENAI_BASE_URL}/models` 拉取模型
+- 每行一个模型 ID，按顺序设置最多 10 个 fallback 模型
+- “测试首选模型”确认当前渠道能正常返回内容
+
+模型渠道配置会保存到 `data/llm_config.json`。旧版单一 `OPENAI_*` env 仍作为默认渠道 / fallback 保留。
+
+API Key / Binance Key 都可以在后台填。模型渠道 Key 保存到 `data/llm_config.json`，Binance Key 保存到 `data/secrets.json`。这些 `data/*.json` 已被 `.gitignore` 忽略，不会进 Git。
+
+示例模型优先级：
+
+```text
+gpt-5.4-mini
+gpt-5.4
+gpt-5.3-codex
+gpt-5.2
+gpt-5.1
+gpt-5
+gpt-4o
+```
 
 ## VPS systemd 部署
 
@@ -117,9 +139,9 @@ JOB_NAME=你的任务名称
 JOB_DESCRIPTION=你的发帖目标、主题、受众说明
 POST_LANGUAGE=zh-CN
 STYLE_GUIDE=你的文风要求
-OPENAI_BASE_URL=https://你的中转站/v1
-OPENAI_API_KEY=
-OPENAI_MODEL=你的模型名
+LLM_PROVIDER=openai
+# 推荐启动后在 Web 后台“模型渠道配置”填写：
+# OPENAI_BASE_URL / OPENAI_API_KEY / 模型优先级
 BINANCE_SQUARE_OPENAPI_KEY=
 PUBLISH_MODE=preview
 ```
@@ -137,6 +159,10 @@ PUBLISH_MODE=preview
 
 - `GET /api/status`
 - `PUT /api/settings`
+- `GET /api/llm-config`（加 `?reveal=1` 可在已授权后台显示完整 API Key）
+- `PUT /api/llm-config`
+- `POST /api/llm-config/channels/:id/models/fetch`
+- `POST /api/llm-config/test`
 - `GET /api/prompts`
 - `POST /api/prompts`
 - `PUT /api/prompts/:id`
@@ -155,6 +181,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" http://127.0.0.1:8787/api/status
 
 - `data/settings.json`：后台设置，首次启动自动生成，已忽略 Git
 - `data/prompts.json`：Prompt 版本，首次启动自动生成，已忽略 Git
+- `data/llm_config.json`：模型渠道、API Key、模型优先级，已忽略 Git
 - `data/secrets.json`：Web 后台保存的 API Key，已忽略 Git
 - `data/runs.jsonl`：运行日志，已忽略 Git
 - `data/daily_counter.json`：每日计数，已忽略 Git
@@ -422,4 +449,3 @@ VPS 防火墙/安全组需要放行：
 ```text
 https://你的完整域名
 ```
-

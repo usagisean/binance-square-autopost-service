@@ -40,6 +40,8 @@ async function runOnce(mode = 'dry-run', meta = {}) {
         source: pack.source,
         lead: pack.trio.lead.symbol, peer: pack.trio.peer.symbol, anchor: pack.trio.anchor.symbol,
         postText: generated.text, promptId: generated.promptId, promptName: generated.promptName,
+        provider: generated.provider, channelId: generated.channelId, channelName: generated.channelName, model: generated.model,
+        llmAttempts: generated.attempts,
         facts: pack.facts, takeaways: pack.takeaways, meta
       });
     }
@@ -51,6 +53,8 @@ async function runOnce(mode = 'dry-run', meta = {}) {
       lead: pack.trio.lead.symbol, peer: pack.trio.peer.symbol, anchor: pack.trio.anchor.symbol,
       postText: generated.text, url: published.url, postId: published.id,
       promptId: generated.promptId, promptName: generated.promptName,
+      provider: generated.provider, channelId: generated.channelId, channelName: generated.channelName, model: generated.model,
+      llmAttempts: generated.attempts,
       counter: { date: nextCounter.date, count: nextCounter.count, remaining: Math.max(0, Number(settings.maxDailyPosts || 100) - nextCounter.count) },
       facts: pack.facts, takeaways: pack.takeaways, meta
     });

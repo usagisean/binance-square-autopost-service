@@ -2,11 +2,13 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { config, masked } = require('./config');
-const { initStore, getSettings, saveSettings, getSecrets, saveSecrets, listPrompts, createPrompt, updatePrompt, activatePrompt, getCounter, listRuns } = require('./store');
+const { initStore, getSettings, saveSettings, getSecrets, saveSecrets, getLlmConfig, saveLlmConfig, setLlmChannelModels, listPrompts, createPrompt, updatePrompt, activatePrompt, getCounter, listRuns } = require('./store');
 const { schedulerStatus, startScheduler } = require('./scheduler');
 const { runOnce } = require('./workflow');
 const { buildMarketPack } = require('./marketPack');
 const { publisherStatus } = require('./publisher');
+const { getJson } = require('./httpClient');
+const { callOpenAIWithCandidate } = require('./generator');
 
 initStore();
 
@@ -43,9 +45,29 @@ function requireAuth(req, res) {
   return false;
 }
 
+function extractModelIds(modelsPayload) {
+  const raw = Array.isArray(modelsPayload?.data) ? modelsPayload.data
+    : Array.isArray(modelsPayload?.models) ? modelsPayload.models
+    : Array.isArray(modelsPayload) ? modelsPayload
+    : [];
+  const seen = new Set();
+  return raw.map(m => String(typeof m === 'string' ? m : (m?.id || m?.name || m?.model || '')).trim())
+    .filter(id => id && !seen.has(id) && seen.add(id))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function findLlmChannel(channelId) {
+  const cfg = getLlmConfig({ revealKeys: true });
+  const channel = cfg.channels.find(ch => ch.id === channelId);
+  if (!channel) throw new Error('llm_channel_not_found');
+  return { cfg, channel };
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname !== '/api/status' && !requireAuth(req, res)) return;
   if (req.method === 'GET' && url.pathname === '/api/status') {
+    const llmConfig = getLlmConfig({ revealKeys: false });
+    const llmConfigured = llmConfig.channels.some(ch => ch.enabled && ch.hasApiKey && (ch.models || []).some(m => m.enabled !== false));
     return sendJson(res, 200, {
       ok: true,
       app: 'binance-square-autopost-service',
@@ -61,7 +83,20 @@ async function handleApi(req, res, url) {
         temperature: getSettings().openaiTemperature ?? config.openaiTemperature,
         maxTokens: getSettings().openaiMaxTokens ?? config.openaiMaxTokens,
         timeoutMs: getSettings().openaiTimeoutMs ?? config.openaiTimeoutMs,
-        apiKey: masked(getSecrets().openaiApiKey)
+        apiKey: masked(getSecrets().openaiApiKey),
+        configured: llmConfigured || !!getSecrets().openaiApiKey,
+        channels: llmConfig.channels.map(ch => ({
+          id: ch.id,
+          name: ch.name,
+          baseUrl: ch.baseUrl,
+          enabled: ch.enabled,
+          priority: ch.priority,
+          hasApiKey: ch.hasApiKey,
+          apiKeyMasked: ch.apiKeyMasked,
+          modelCount: (ch.models || []).length,
+          activeModels: (ch.models || []).filter(m => m.enabled !== false).slice(0, 10).map(m => m.id)
+        })),
+        maxFallbackModels: llmConfig.maxFallbackModels
       },
       authRequired: !!config.adminToken
     });
@@ -79,6 +114,52 @@ async function handleApi(req, res, url) {
         telegramChatId: secrets.telegramChatId ? 'configured' : ''
       }
     });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/llm-config') {
+    const revealKeys = url.searchParams.get('reveal') === '1';
+    return sendJson(res, 200, { ok: true, llmConfig: getLlmConfig({ revealKeys }) });
+  }
+  if (req.method === 'PUT' && url.pathname === '/api/llm-config') {
+    const body = await readBody(req);
+    return sendJson(res, 200, { ok: true, llmConfig: saveLlmConfig(body.llmConfig || body) });
+  }
+  const llmModelFetch = url.pathname.match(/^\/api\/llm-config\/channels\/([^/]+)\/models\/fetch$/);
+  if (llmModelFetch && req.method === 'POST') {
+    const channelId = decodeURIComponent(llmModelFetch[1]);
+    const { channel } = findLlmChannel(channelId);
+    if (!channel.baseUrl) throw new Error('missing_llm_base_url');
+    if (!channel.apiKey) throw new Error('missing_llm_api_key');
+    const modelsPayload = await getJson(`${channel.baseUrl.replace(/\/+$/, '')}/models`, {
+      headers: { Authorization: `Bearer ${channel.apiKey}` },
+      timeoutMs: Number(channel.timeoutMs || 45000)
+    });
+    const fetchedIds = extractModelIds(modelsPayload);
+    const fetched = new Set(fetchedIds);
+    const existingIds = (channel.models || []).map(m => m.id).filter(Boolean);
+    const mergedIds = [
+      ...existingIds.filter(id => fetched.has(id)),
+      ...fetchedIds.filter(id => !existingIds.includes(id))
+    ];
+    const updated = setLlmChannelModels(channelId, mergedIds.map((modelId, idx) => ({ id: modelId, priority: idx + 1, enabled: true })));
+    return sendJson(res, 200, { ok: true, fetchedModels: fetchedIds, llmConfig: updated });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/llm-config/test') {
+    const body = await readBody(req);
+    const { channel } = findLlmChannel(String(body.channelId || ''));
+    const model = String(body.model || channel.models?.find(m => m.enabled !== false)?.id || '').trim();
+    if (!model) throw new Error('missing_llm_model');
+    const startedAt = Date.now();
+    const text = await callOpenAIWithCandidate('请只回复“连接正常”四个字。', {
+      channelId: channel.id,
+      channelName: channel.name,
+      apiKey: channel.apiKey,
+      baseUrl: channel.baseUrl,
+      model,
+      temperature: channel.temperature,
+      maxTokens: Math.min(Number(channel.maxTokens || 64), 64),
+      timeoutMs: channel.timeoutMs
+    });
+    return sendJson(res, 200, { ok: true, channelId: channel.id, channelName: channel.name, model, durationMs: Date.now() - startedAt, text });
   }
   if (req.method === 'GET' && url.pathname === '/api/prompts') return sendJson(res, 200, { ok: true, prompts: listPrompts() });
   if (req.method === 'POST' && url.pathname === '/api/prompts') return sendJson(res, 200, { ok: true, prompt: createPrompt(await readBody(req)) });

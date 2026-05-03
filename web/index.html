@@ -5,39 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Binance Square Autopost</title>
   <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#0b0e11;color:#eaecef}header{padding:18px 24px;background:#181a20;border-bottom:1px solid #2b3139;display:flex;justify-content:space-between;align-items:center}h1{font-size:20px;margin:0;color:#f0b90b}.wrap{padding:22px;display:grid;grid-template-columns:360px 1fr;gap:18px}.card{background:#181a20;border:1px solid #2b3139;border-radius:12px;padding:16px}label{display:block;font-size:12px;color:#b7bdc6;margin-top:12px}input,textarea,select{width:100%;box-sizing:border-box;background:#0b0e11;color:#eaecef;border:1px solid #3c4450;border-radius:8px;padding:9px;margin-top:5px}textarea{min-height:310px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}button{background:#f0b90b;color:#111;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}button.secondary{background:#2b3139;color:#eaecef}button.danger{background:#d64545;color:white}.muted{color:#848e9c;font-size:12px}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#2b3139;margin-right:6px}.ok{color:#0ecb81}.bad{color:#f6465d}pre{white-space:pre-wrap;background:#0b0e11;border:1px solid #2b3139;border-radius:8px;padding:12px;max-height:300px;overflow:auto}.run{border-bottom:1px solid #2b3139;padding:10px 0}.run:last-child{border-bottom:0}.post{font-size:15px;line-height:1.6;color:#f5f5f5}@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+    :root{--bg:#0b0e11;--card:#181a20;--line:#2b3139;--text:#eaecef;--muted:#848e9c;--brand:#f0b90b;--ok:#0ecb81;--bad:#f6465d}
+    *{box-sizing:border-box} body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--text)}
+    header{padding:18px 24px;background:var(--card);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px}
+    h1{font-size:20px;margin:0;color:var(--brand)} h2{font-size:18px;margin:0 0 12px} h3{font-size:15px;margin:14px 0 6px;color:#f5f5f5}
+    .wrap{padding:22px;display:grid;grid-template-columns:360px 1fr;gap:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:18px}
+    label{display:block;font-size:12px;color:#b7bdc6;margin-top:12px} input,textarea,select{width:100%;background:var(--bg);color:var(--text);border:1px solid #3c4450;border-radius:8px;padding:9px;margin-top:5px}
+    input[type=checkbox]{width:auto;margin-right:6px} textarea{min-height:220px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.small-textarea{min-height:90px}.models-textarea{min-height:220px}
+    .row{display:flex;gap:8px;align-items:flex-end}.row>*{flex:1}.row.tight{align-items:center}.row.tight>*{flex:initial}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px}
+    button{background:var(--brand);color:#111;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;white-space:nowrap}button.secondary{background:var(--line);color:var(--text)}button.danger{background:#d64545;color:white}button:disabled{opacity:.55;cursor:not-allowed}
+    .muted{color:var(--muted);font-size:12px;line-height:1.45}.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:var(--line);margin:2px 6px 2px 0}.ok{color:var(--ok)}.bad{color:var(--bad)}
+    pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:340px;overflow:auto}.run{border-bottom:1px solid var(--line);padding:10px 0}.run:last-child{border-bottom:0}.post{font-size:15px;line-height:1.6;color:#f5f5f5;margin-top:6px}.hint{border-left:3px solid var(--brand);padding-left:10px}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media(max-width:1050px){.wrap{grid-template-columns:1fr}.grid4,.grid3,.two-col{grid-template-columns:1fr}.row{flex-wrap:wrap}}
   </style>
 </head>
 <body>
 <header><h1>Binance Square Autopost</h1><div class="muted" id="clock"></div></header>
 <div class="wrap">
-  <section class="card">
-    <h2>控制台</h2>
-    <label>Admin Token</label><input id="token" placeholder="如果服务配置了 ADMIN_TOKEN，在这里填" />
-    <div style="height:10px"></div>
-    <div id="status" class="muted">加载中...</div>
-    <label>Job 名称</label><input id="jobName" placeholder="例如：Smart Money Autopost">
-    <label>Job 说明</label><textarea id="jobDescription" style="min-height:80px" placeholder="这条任务要做什么、面向谁、发什么内容"></textarea>
-    <label>语言</label><input id="language" placeholder="zh-CN / en-US">
-    <label>风格要求</label><textarea id="styleGuide" style="min-height:90px" placeholder="短句、交易员视角、不要模板腔..."></textarea>
-    <label><input type="checkbox" id="enabled" style="width:auto"> 启用定时任务</label>
-    <label>发布模式</label><select id="publishMode"><option value="preview">仅生成预览，不真实发帖</option><option value="live">真实发布到 Binance Square</option></select>
-    <div class="row"><div><label>间隔分钟</label><input id="intervalMinutes" type="number" min="1"></div><div><label>每日上限</label><input id="maxDailyPosts" type="number" min="1"></div></div>
-    <div class="row"><div><label>最短字符</label><input id="minPostChars" type="number"></div><div><label>最长字符</label><input id="maxPostChars" type="number"></div></div>
-    <label>LLM Provider</label><select id="llmProvider"><option value="mock">mock 本地测试</option><option value="openai">OpenAI-compatible</option></select>
-    <label>OpenAI Base URL</label><input id="openaiBaseUrl" placeholder="https://api.openai.com/v1 或你的中转站 /v1">
-    <label>OpenAI API Key（留空不修改，保存在 data/secrets.json）</label><input id="openaiApiKey" type="password" autocomplete="off" placeholder="sk-...">
-    <label>模型</label><input id="openaiModel" placeholder="gpt-4.1-mini / gpt-4o-mini / 你的中转模型名">
-    <div class="row"><div><label>Temperature</label><input id="openaiTemperature" type="number" min="0" max="2" step="0.1"></div><div><label>Max Tokens</label><input id="openaiMaxTokens" type="number" min="1"></div></div>
-    <label>Timeout ms</label><input id="openaiTimeoutMs" type="number" min="5000" step="1000">
-    <label>Binance Square Key（留空不修改，保存在 data/secrets.json）</label><input id="binanceSquareOpenApiKey" type="password" autocomplete="off" placeholder="X-Square-OpenAPI-Key">
-    <label>禁用币种（逗号分隔）</label><input id="bannedSymbols">
-    <div style="height:14px"></div>
-    <div class="row"><button onclick="saveSettings()">保存设置</button><button class="secondary" onclick="loadAll()">刷新</button></div>
-    <div style="height:8px"></div>
-    <div class="row"><button onclick="run('dry-run')">生成预览</button><button class="danger" onclick="run('publish')">按当前模式执行</button></div>
-    <div style="height:8px"></div><button class="secondary" style="width:100%" onclick="marketPack()">预览 Market Pack</button>
+  <section>
+    <div class="card">
+      <h2>控制台</h2>
+      <label>Admin Token</label><input id="token" placeholder="如果服务配置了 ADMIN_TOKEN，在这里填" />
+      <div style="height:10px"></div>
+      <div id="status" class="muted">加载中...</div>
+
+      <label>Job 名称</label><input id="jobName" placeholder="例如：Smart Money Autopost">
+      <label>Job 说明</label><textarea id="jobDescription" class="small-textarea" placeholder="这条任务要做什么、面向谁、发什么内容"></textarea>
+      <label>语言</label><input id="language" placeholder="zh-CN / en-US">
+      <label>风格要求</label><textarea id="styleGuide" class="small-textarea" placeholder="短句、交易员视角、不要模板腔..."></textarea>
+      <label><input type="checkbox" id="enabled">启用定时任务</label>
+      <label>发布模式</label><select id="publishMode"><option value="preview">仅生成预览，不真实发帖</option><option value="live">真实发布到 Binance Square</option></select>
+      <div class="row"><div><label>间隔分钟</label><input id="intervalMinutes" type="number" min="1"></div><div><label>每日上限</label><input id="maxDailyPosts" type="number" min="1"></div></div>
+      <div class="row"><div><label>最短字符</label><input id="minPostChars" type="number"></div><div><label>最长字符</label><input id="maxPostChars" type="number"></div></div>
+      <label>LLM Provider</label><select id="llmProvider"><option value="mock">mock 本地测试</option><option value="openai">OpenAI-compatible 渠道配置</option></select>
+      <label>Binance Square Key（留空不修改；仅 live 模式使用）</label><input id="binanceSquareOpenApiKey" type="password" autocomplete="off" placeholder="X-Square-OpenAPI-Key">
+      <label>禁用币种（逗号分隔）</label><input id="bannedSymbols">
+      <div style="height:14px"></div>
+      <div class="row"><button onclick="saveSettings()">保存设置</button><button class="secondary" onclick="loadAll()">刷新</button></div>
+      <div style="height:8px"></div>
+      <div class="row"><button onclick="run('dry-run')">生成预览</button><button class="danger" onclick="run('publish')">按当前模式执行</button></div>
+      <div style="height:8px"></div><button class="secondary" style="width:100%" onclick="marketPack()">预览 Market Pack</button>
+    </div>
   </section>
+
   <main>
     <section class="card">
       <h2>Prompt 编辑</h2>
@@ -46,34 +56,83 @@
       <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}）</label>
       <textarea id="promptContent"></textarea>
     </section>
-    <section class="card" style="margin-top:18px">
+
+    <section class="card">
+      <h2>模型渠道配置</h2>
+      <p class="muted hint">这里保存到 VPS 的 <code>data/llm_config.json</code>，不会提交到 Git。设置为 <b>LLM Provider = openai</b> 后，会按“渠道优先级 → 模型优先级”最多尝试 10 个模型，失败自动 fallback 到下一个。</p>
+      <div class="row"><select id="llmChannelSelect" onchange="selectLlmChannel()"></select><button class="secondary" onclick="addLlmChannel()">新增渠道</button><button class="danger" onclick="deleteLlmChannel()">删除渠道</button></div>
+      <div class="two-col"><div><label>渠道 ID</label><input id="llmChannelId" placeholder="zxaihub"></div><div><label>渠道名称</label><input id="llmChannelName" placeholder="ZXAIHub"></div></div>
+      <label><input type="checkbox" id="llmChannelEnabled">启用这个渠道</label>
+      <label>OpenAI-compatible Base URL</label><input id="llmChannelBaseUrl" placeholder="https://api.zxaihub.com/v1">
+      <label>API Key（可显示/更新；受 ADMIN_TOKEN 保护）</label>
+      <div class="row"><input id="llmChannelApiKey" type="password" autocomplete="off" placeholder="sk-..." /><button class="secondary" onclick="toggleLlmKey()">显示/隐藏</button></div>
+      <div class="grid4">
+        <div><label>渠道优先级</label><input id="llmChannelPriority" type="number" min="1" value="1"></div>
+        <div><label>Temperature</label><input id="llmChannelTemperature" type="number" min="0" max="2" step="0.1" value="0.8"></div>
+        <div><label>Max Tokens</label><input id="llmChannelMaxTokens" type="number" min="1" value="180"></div>
+        <div><label>Timeout ms</label><input id="llmChannelTimeoutMs" type="number" min="5000" step="1000" value="45000"></div>
+      </div>
+      <div class="row"><div><label>全局最多 fallback 模型数</label><input id="llmMaxFallbackModels" type="number" min="1" max="10" value="10"></div><div class="muted" style="padding-bottom:9px">建议填 10；每行一个模型，越靠上优先级越高。</div></div>
+      <label>模型优先级（每行一个模型 ID；前 10 个会依次尝试）</label>
+      <textarea id="llmModels" class="models-textarea" placeholder="gpt-5.4-mini&#10;gpt-5.4&#10;gpt-5.3-codex&#10;gpt-5.2&#10;gpt-5.1&#10;gpt-5"></textarea>
+      <div class="row"><button onclick="saveLlmConfig(true)">保存渠道配置</button><button class="secondary" onclick="fetchChannelModels()">从 /models 拉取</button><button class="secondary" onclick="testLlmChannel()">测试首选模型</button></div>
+      <pre id="llmOutput">等待加载模型配置...</pre>
+    </section>
+
+    <section class="card">
       <h2>运行结果</h2>
       <pre id="output">等待操作...</pre>
     </section>
-    <section class="card" style="margin-top:18px">
+    <section class="card">
       <h2>最近运行</h2>
       <div id="runs"></div>
     </section>
   </main>
 </div>
 <script>
-const $=id=>document.getElementById(id); let prompts=[]; let currentSettings={};
+const $=id=>document.getElementById(id);
+let prompts=[]; let currentSettings={}; let llmConfig={channels:[],maxFallbackModels:10}; let selectedChannelId='';
 $('token').value=localStorage.getItem('adminToken')||''; $('token').oninput=()=>localStorage.setItem('adminToken',$('token').value);
 function headers(){const t=$('token').value;return {'Content-Type':'application/json',...(t?{Authorization:'Bearer '+t}:{})}}
 async function api(path,opt={}){const r=await fetch(path,{...opt,headers:{...headers(),...(opt.headers||{})}});const j=await r.json();if(!r.ok||j.ok===false)throw new Error(j.error||r.statusText);return j}
 function out(x){$('output').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
-async function loadAll(){try{await loadStatus();await loadPrompts();await loadRuns()}catch(e){out('加载失败：'+e.message)}}
-async function loadStatus(){const j=await api('/api/status');const s=j.settings;currentSettings=s;$('status').innerHTML=`<span class="pill ${s.publishMode==='live'?'bad':'ok'}">模式 ${s.publishMode==='live'?'LIVE 真实发布':'PREVIEW 只预览'}</span><span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.apiKey?'ok':'bad'}">LLM Key ${j.llm.apiKey?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span>`;$('jobName').value=s.jobName||'';$('jobDescription').value=s.jobDescription||'';$('language').value=s.language||'';$('styleGuide').value=s.styleGuide||'';$('enabled').checked=!!s.enabled;$('publishMode').value=s.publishMode||'preview';$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider;$('openaiBaseUrl').value=s.openaiBaseUrl||j.llm.baseUrl||'';$('openaiModel').value=s.openaiModel||j.llm.model||'';$('openaiTemperature').value=s.openaiTemperature??j.llm.temperature??0.8;$('openaiMaxTokens').value=s.openaiMaxTokens??j.llm.maxTokens??180;$('openaiTimeoutMs').value=s.openaiTimeoutMs??j.llm.timeoutMs??45000;$('openaiApiKey').value='';$('binanceSquareOpenApiKey').value='';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',')}
-async function saveSettings(){const body={jobName:$('jobName').value.trim(),jobDescription:$('jobDescription').value.trim(),language:$('language').value.trim(),styleGuide:$('styleGuide').value.trim(),enabled:$('enabled').checked,publishMode:$('publishMode').value,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,openaiBaseUrl:$('openaiBaseUrl').value.trim(),openaiModel:$('openaiModel').value.trim(),openaiTemperature:+$('openaiTemperature').value,openaiMaxTokens:+$('openaiMaxTokens').value,openaiTimeoutMs:+$('openaiTimeoutMs').value,bannedSymbols:$('bannedSymbols').value.split(',').map(x=>x.trim()).filter(Boolean)};const secretBody={};if($('openaiApiKey').value.trim())secretBody.openaiApiKey=$('openaiApiKey').value.trim();if($('binanceSquareOpenApiKey').value.trim())secretBody.binanceSquareOpenApiKey=$('binanceSquareOpenApiKey').value.trim();const result={settings:await api('/api/settings',{method:'PUT',body:JSON.stringify(body)})};if(Object.keys(secretBody).length)result.secrets=await api('/api/secrets',{method:'PUT',body:JSON.stringify(secretBody)});out(result);await loadStatus()}
-async function loadPrompts(){const j=await api('/api/prompts');prompts=j.prompts;$('promptSelect').innerHTML=prompts.map(p=>`<option value="${p.id}">${p.active?'✅ ':''}${p.name}</option>`).join('');selectPrompt()}
+function llmOut(x){$('llmOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+function linesToModels(text){return String(text||'').split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean).map((id,idx)=>({id,priority:idx+1,enabled:true}))}
+function modelsToLines(models){return (models||[]).filter(m=>m.enabled!==false).sort((a,b)=>(a.priority||1)-(b.priority||1)).map(m=>m.id).join('\n')}
+async function loadAll(){try{await loadStatus();await loadPrompts();await loadLlmConfig(true);await loadRuns()}catch(e){out('加载失败：'+e.message)}}
+async function loadStatus(){
+  const j=await api('/api/status');const s=j.settings;currentSettings=s;
+  $('status').innerHTML=`<span class="pill ${s.publishMode==='live'?'bad':'ok'}">模式 ${s.publishMode==='live'?'LIVE 真实发布':'PREVIEW 只预览'}</span><span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.configured?'ok':'bad'}">LLM ${j.llm.configured?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span>`;
+  $('jobName').value=s.jobName||'';$('jobDescription').value=s.jobDescription||'';$('language').value=s.language||'';$('styleGuide').value=s.styleGuide||'';$('enabled').checked=!!s.enabled;$('publishMode').value=s.publishMode||'preview';$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider||'mock';$('binanceSquareOpenApiKey').value='';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',')
+}
+async function saveSettings(){
+  const body={jobName:$('jobName').value.trim(),jobDescription:$('jobDescription').value.trim(),language:$('language').value.trim(),styleGuide:$('styleGuide').value.trim(),enabled:$('enabled').checked,publishMode:$('publishMode').value,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,bannedSymbols:$('bannedSymbols').value.split(',').map(x=>x.trim()).filter(Boolean)};
+  const result={settings:await api('/api/settings',{method:'PUT',body:JSON.stringify(body)})};
+  const secretBody={};if($('binanceSquareOpenApiKey').value.trim())secretBody.binanceSquareOpenApiKey=$('binanceSquareOpenApiKey').value.trim();if(Object.keys(secretBody).length)result.secrets=await api('/api/secrets',{method:'PUT',body:JSON.stringify(secretBody)});
+  out(result);await loadStatus();
+}
+async function loadPrompts(){const j=await api('/api/prompts');prompts=j.prompts;$('promptSelect').innerHTML=prompts.map(p=>`<option value="${escapeHtml(p.id)}">${p.active?'✅ ':''}${escapeHtml(p.name)}</option>`).join('');selectPrompt()}
 function selectPrompt(){const p=prompts.find(x=>x.id===$('promptSelect').value)||prompts[0];if(!p)return;$('promptName').value=p.name;$('promptContent').value=p.content}
-async function savePrompt(){const id=$('promptSelect').value;const body={name:$('promptName').value,content:$('promptContent').value};out(await api('/api/prompts/'+id,{method:'PUT',body:JSON.stringify(body)}));await loadPrompts()}
-async function activatePrompt(){const id=$('promptSelect').value;out(await api('/api/prompts/'+id+'/activate',{method:'POST'}));await loadPrompts()}
+async function savePrompt(){const id=$('promptSelect').value;const body={name:$('promptName').value,content:$('promptContent').value};out(await api('/api/prompts/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify(body)}));await loadPrompts()}
+async function activatePrompt(){const id=$('promptSelect').value;out(await api('/api/prompts/'+encodeURIComponent(id)+'/activate',{method:'POST'}));await loadPrompts()}
 async function newPrompt(){const body={name:'新 Prompt',content:$('promptContent').value,active:false};const j=await api('/api/prompts',{method:'POST',body:JSON.stringify(body)});out(j);await loadPrompts();$('promptSelect').value=j.prompt.id;selectPrompt()}
+function currentChannel(){return llmConfig.channels.find(ch=>ch.id===selectedChannelId)||llmConfig.channels[0]}
+async function loadLlmConfig(reveal=false){const j=await api('/api/llm-config'+(reveal?'?reveal=1':''));llmConfig=j.llmConfig||{channels:[],maxFallbackModels:10};if(!llmConfig.channels.length)llmConfig.channels=[newBlankChannel()];selectedChannelId=selectedChannelId&&llmConfig.channels.some(ch=>ch.id===selectedChannelId)?selectedChannelId:llmConfig.channels[0].id;renderChannelSelect();selectLlmChannel();llmOut({loaded:true,channels:llmConfig.channels.map(ch=>({id:ch.id,name:ch.name,enabled:ch.enabled,models:(ch.models||[]).length,hasApiKey:!!(ch.apiKey||ch.hasApiKey)}))})}
+function renderChannelSelect(){$('llmChannelSelect').innerHTML=llmConfig.channels.sort((a,b)=>(a.priority||1)-(b.priority||1)).map(ch=>`<option value="${escapeHtml(ch.id)}">${ch.enabled!==false?'✅':'⏸'} ${escapeHtml(ch.name||ch.id)} · #${ch.priority||1}</option>`).join('');$('llmChannelSelect').value=selectedChannelId;$('llmMaxFallbackModels').value=llmConfig.maxFallbackModels||10}
+function selectLlmChannel(){selectedChannelId=$('llmChannelSelect').value||selectedChannelId;const ch=currentChannel();if(!ch)return;$('llmChannelId').value=ch.id||'';$('llmChannelName').value=ch.name||'';$('llmChannelEnabled').checked=ch.enabled!==false;$('llmChannelBaseUrl').value=ch.baseUrl||'';$('llmChannelApiKey').value=ch.apiKey||'';$('llmChannelPriority').value=ch.priority||1;$('llmChannelTemperature').value=ch.temperature??0.8;$('llmChannelMaxTokens').value=ch.maxTokens||180;$('llmChannelTimeoutMs').value=ch.timeoutMs||45000;$('llmModels').value=modelsToLines(ch.models)}
+function collectChannelFromForm(){return {id:$('llmChannelId').value.trim()||selectedChannelId||'primary',name:$('llmChannelName').value.trim()||$('llmChannelId').value.trim()||'OpenAI-compatible',baseUrl:$('llmChannelBaseUrl').value.trim().replace(/\/+$/,''),apiKey:$('llmChannelApiKey').value.trim(),enabled:$('llmChannelEnabled').checked,priority:Math.max(1,+$('llmChannelPriority').value||1),temperature:+$('llmChannelTemperature').value,maxTokens:+$('llmChannelMaxTokens').value,timeoutMs:+$('llmChannelTimeoutMs').value,models:linesToModels($('llmModels').value)}}
+function upsertCurrentChannel(){const ch=collectChannelFromForm();const oldId=selectedChannelId;const idx=llmConfig.channels.findIndex(x=>x.id===oldId);if(idx>=0)llmConfig.channels[idx]=ch;else llmConfig.channels.push(ch);selectedChannelId=ch.id;llmConfig.maxFallbackModels=Math.max(1,Math.min(10,+$('llmMaxFallbackModels').value||10));return ch}
+async function saveLlmConfig(show=true){const ch=upsertCurrentChannel();const j=await api('/api/llm-config',{method:'PUT',body:JSON.stringify(llmConfig)});llmConfig=j.llmConfig;selectedChannelId=(llmConfig.channels.find(x=>x.id===ch.id)||llmConfig.channels[0]||{}).id;renderChannelSelect();selectLlmChannel();if(show)llmOut({saved:true,selectedChannelId,priorityPreview:llmConfig.channels.flatMap(c=>(c.models||[]).slice(0,10).map(m=>({channel:c.name,model:m.id,channelPriority:c.priority,modelPriority:m.priority}))).slice(0,llmConfig.maxFallbackModels||10)});return j}
+function newBlankChannel(){const n=(llmConfig.channels||[]).length+1;return {id:'channel_'+n,name:'New Channel '+n,baseUrl:'https://api.openai.com/v1',apiKey:'',enabled:true,priority:n,temperature:0.8,maxTokens:180,timeoutMs:45000,models:[]}}
+function addLlmChannel(){upsertCurrentChannel();const ch=newBlankChannel();llmConfig.channels.push(ch);selectedChannelId=ch.id;renderChannelSelect();selectLlmChannel();llmOut('已新增渠道，填好 Base URL / API Key / 模型后点击保存。')}
+async function deleteLlmChannel(){const ch=currentChannel();if(!ch||!confirm('删除渠道 '+ch.name+'？'))return;llmConfig.channels=llmConfig.channels.filter(x=>x.id!==ch.id);if(!llmConfig.channels.length)llmConfig.channels=[newBlankChannel()];selectedChannelId=llmConfig.channels[0].id;renderChannelSelect();selectLlmChannel();const j=await api('/api/llm-config',{method:'PUT',body:JSON.stringify(llmConfig)});llmConfig=j.llmConfig;selectedChannelId=llmConfig.channels[0]?.id||'';renderChannelSelect();selectLlmChannel();llmOut({deleted:ch.id,channels:llmConfig.channels.map(c=>c.id)})}
+function toggleLlmKey(){const el=$('llmChannelApiKey');el.type=el.type==='password'?'text':'password'}
+async function fetchChannelModels(){const ch=upsertCurrentChannel();llmOut('正在保存并从 /models 拉取模型列表...');await saveLlmConfig(false);const j=await api('/api/llm-config/channels/'+encodeURIComponent(ch.id)+'/models/fetch',{method:'POST'});llmConfig=j.llmConfig;selectedChannelId=ch.id;renderChannelSelect();selectLlmChannel();llmOut({fetchedCount:j.fetchedModels.length,fetchedModels:j.fetchedModels})}
+async function testLlmChannel(){const ch=upsertCurrentChannel();await saveLlmConfig(false);const model=(linesToModels($('llmModels').value)[0]||{}).id;if(!model)throw new Error('请先填写至少一个模型');llmOut('正在测试 '+ch.name+' / '+model+' ...');llmOut(await api('/api/llm-config/test',{method:'POST',body:JSON.stringify({channelId:ch.id,model})}))}
 async function run(mode){if(mode==='publish'&&currentSettings.publishMode==='live'&&!confirm('当前是 LIVE 模式，确认真实发布到 Binance Square？'))return;out(currentSettings.publishMode==='live'&&mode==='publish'?'真实发布中...':'生成预览中...');const j=await api('/api/run',{method:'POST',body:JSON.stringify({mode})});out(j);await loadAll()}
 async function marketPack(){out('获取中...');out(await api('/api/market-pack',{method:'POST'}))}
-async function loadRuns(){const j=await api('/api/runs?limit=30');$('runs').innerHTML=j.runs.map(r=>`<div class="run"><div><span class="pill ${r.status==='published'?'ok':r.status==='error'?'bad':''}">${r.status}</span><span class="muted">${r.createdAt||''} · ${r.source||''} · ${r.lead||''}/${r.peer||''}/${r.anchor||''}</span></div>${r.postText?`<div class="post">${escapeHtml(r.postText)}</div>`:''}${r.url?`<a href="${r.url}" target="_blank">${r.url}</a>`:''}${r.error?`<div class="bad">${escapeHtml(r.error)}</div>`:''}</div>`).join('')}
-function escapeHtml(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+async function loadRuns(){const j=await api('/api/runs?limit=30');$('runs').innerHTML=j.runs.map(r=>`<div class="run"><div><span class="pill ${r.status==='published'?'ok':r.status==='error'?'bad':''}">${escapeHtml(r.status)}</span><span class="muted">${escapeHtml(r.createdAt||'')} · ${escapeHtml(r.source||'')} · ${escapeHtml([r.lead,r.peer,r.anchor].filter(Boolean).join('/'))}${r.model?` · ${escapeHtml(r.channelName||r.channelId||'')} / ${escapeHtml(r.model)}`:''}</span></div>${r.postText?`<div class="post">${escapeHtml(r.postText)}</div>`:''}${r.url?`<a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.url)}</a>`:''}${r.error?`<div class="bad">${escapeHtml(r.error)}</div>`:''}</div>`).join('')}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 setInterval(()=>$('clock').textContent=new Date().toLocaleString(),1000);loadAll();
 </script>
 </body>
