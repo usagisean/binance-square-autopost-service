@@ -10,6 +10,15 @@ function renderTemplate(template, pack, settings = getSettings()) {
   const lead = pack.trio.lead.symbol;
   const peer = pack.trio.peer.symbol;
   const anchor = pack.trio.anchor.symbol;
+  const voiceAngles = [
+    '先看谁在抢主动权，再看谁只是被情绪带着跑。',
+    '从合约拥挤度和盘口承接切入，别写成涨跌榜复读。',
+    '用交易员盘中复盘口吻，重点写强弱差和下一步观察位。',
+    '从情绪是否过热切入，语气克制但要有判断。',
+    '用一句盘感开场，然后用数据把主动腿、跟随腿、风险锚串起来。',
+    '避免固定开头，像刚盯完盘顺手发的一段观察。'
+  ];
+  const voiceAngle = voiceAngles[Math.floor(Math.random() * voiceAngles.length)];
   const vars = {
     JOB_NAME: settings.jobName || '',
     JOB_DESCRIPTION: settings.jobDescription || '',
@@ -17,6 +26,7 @@ function renderTemplate(template, pack, settings = getSettings()) {
     STYLE_GUIDE: settings.styleGuide || '',
     CONTENT_SOURCE: settings.contentSource || '',
     POST_TARGET: settings.postTarget || '',
+    VOICE_ANGLE: voiceAngle,
     MIN_POST_CHARS: String(settings.minPostChars || 55),
     MAX_POST_CHARS: String(settings.maxPostChars || 110),
     LEAD: lead,

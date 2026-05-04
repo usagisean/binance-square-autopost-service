@@ -86,7 +86,7 @@
       <h2>Prompt 编辑</h2>
       <div class="row"><select id="promptSelect" onchange="selectPrompt()"></select><button class="secondary" onclick="newPrompt()">新建</button><button onclick="savePrompt()">保存 Prompt</button><button class="secondary" onclick="activatePrompt()">设为启用</button></div>
       <label>名称</label><input id="promptName">
-      <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}）</label>
+      <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}, {{VOICE_ANGLE}}, {{MIN_POST_CHARS}}, {{MAX_POST_CHARS}}）</label>
       <textarea id="promptContent"></textarea>
     </section>
   </section>
