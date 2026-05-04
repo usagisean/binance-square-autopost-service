@@ -11,7 +11,7 @@
 
 硬性要求：
 - 必须自然提到 {{LEAD}}, {{PEER}}, {{ANCHOR}} 三个币种，并使用 Cashtag：{{LEAD_CASHTAG}} {{PEER_CASHTAG}} {{ANCHOR_CASHTAG}}
-- 正文控制在配置的字符范围内，短句，有交易员视角
+- 正文控制在 {{MIN_POST_CHARS}}~{{MAX_POST_CHARS}} 个中文字符，短句，有交易员视角
 - 不要标题，不要项目符号，不要“不是投资建议”
 - 不要编造 facts 之外的信息
 - 写出谁更强、谁只是跟随、谁是情绪锚，但要像真人盘中表达

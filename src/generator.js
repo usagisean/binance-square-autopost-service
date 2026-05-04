@@ -17,6 +17,8 @@ function renderTemplate(template, pack, settings = getSettings()) {
     STYLE_GUIDE: settings.styleGuide || '',
     CONTENT_SOURCE: settings.contentSource || '',
     POST_TARGET: settings.postTarget || '',
+    MIN_POST_CHARS: String(settings.minPostChars || 55),
+    MAX_POST_CHARS: String(settings.maxPostChars || 110),
     LEAD: lead,
     PEER: peer,
     ANCHOR: anchor,
@@ -333,6 +335,45 @@ function validatePostText(text, pack, settings = getSettings()) {
   return { ok: errors.length === 0, errors, text: clean, length: len };
 }
 
+function validationError(validation) {
+  return `post_validation_failed:${validation.errors.join(',')}`;
+}
+
+function repairPromptForPost(text, validation, pack, settings = getSettings()) {
+  const min = Number(settings.minPostChars || 55);
+  const max = Number(settings.maxPostChars || 110);
+  const symbols = [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol];
+  const tags = symbols.map(cashtag).join(' ');
+  return `下面这条 Binance Square 正文已经生成，但没有通过本地校验：${validation.errors.join(',')}。
+
+请只输出改写后的最终正文，不解释过程。
+
+硬性要求：
+1. 字数必须在 ${min} 到 ${max} 个中文字符之间，不能超过 ${max}。
+2. 必须保留并自然提到这 3 个 Cashtag：${tags}。
+3. 必须写出谁更强、谁跟随、谁是风险锚/情绪锚、接下来盯什么。
+4. 只能使用 facts / takeaways 里的真实数据，禁止编造。
+5. 不要标题、不要项目符号、不要免责声明、不要报告腔。
+
+原文：
+${text}
+
+facts：
+${(pack.facts || []).join('\n')}
+
+交易解读：
+${(pack.takeaways || []).join('\n')}`;
+}
+
+async function repairPostText(text, validation, pack, settings, candidate) {
+  const repairCandidate = { ...candidate };
+  const requested = Number(repairCandidate.maxTokens || config.openaiMaxTokens || 1024);
+  repairCandidate.maxTokens = Math.max(512, Math.min(requested || 1024, 2048));
+  const repairedText = await callOpenAIWithCandidate(repairPromptForPost(text, validation, pack, settings), repairCandidate);
+  const repairedValidation = validatePostText(repairedText, pack, settings);
+  return { text: repairedText, validation: repairedValidation };
+}
+
 async function generatePost(pack) {
   const settings = getSettings();
   const prompt = getActivePrompt();
@@ -342,7 +383,7 @@ async function generatePost(pack) {
   if (provider === 'mock') {
     const text = mockGenerate(pack);
     const validation = validatePostText(text, pack, settings);
-    if (!validation.ok) throw new Error(`post_validation_failed:${validation.errors.join(',')}:text=${validation.text}`);
+    if (!validation.ok) throw new Error(`${validationError(validation)}:text=${validation.text}`);
     return { text: validation.text, promptId: prompt.id, promptName: prompt.name, provider, model: 'mock', renderedPrompt, attempts: [{ provider, model: 'mock', ok: true }] };
   }
 
@@ -355,7 +396,26 @@ async function generatePost(pack) {
         const text = await callOpenAIWithCandidate(renderedPrompt, candidate);
         const validation = validatePostText(text, pack, settings);
         if (!validation.ok) {
-          attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: false, error: `post_validation_failed:${validation.errors.join(',')}`, text: validation.text });
+          try {
+            const repaired = await repairPostText(text, validation, pack, settings, candidate);
+            if (repaired.validation.ok) {
+              attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: true, repaired: true, originalError: validationError(validation), originalLength: validation.length, repairedLength: repaired.validation.length });
+              return {
+                text: repaired.validation.text,
+                promptId: prompt.id,
+                promptName: prompt.name,
+                provider,
+                channelId: candidate.channelId,
+                channelName: candidate.channelName,
+                model: candidate.model,
+                renderedPrompt,
+                attempts
+              };
+            }
+            attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: false, error: `${validationError(validation)}; repair_failed:${validationError(repaired.validation)}`, text: validation.text, repairedText: repaired.validation.text });
+          } catch (repairErr) {
+            attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: false, error: `${validationError(validation)}; repair_error:${repairErr.message || String(repairErr)}`, text: validation.text });
+          }
           continue;
         }
         attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: true });
@@ -379,9 +439,27 @@ async function generatePost(pack) {
   }
 
   const text = await callOpenAI(renderedPrompt, settings);
-  const validation = validatePostText(text, pack, settings);
-  if (!validation.ok) throw new Error(`post_validation_failed:${validation.errors.join(',')}:text=${validation.text}`);
-  return { text: validation.text, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: [{ channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, ok: true }] };
+  let validation = validatePostText(text, pack, settings);
+  let finalText = validation.text;
+  const legacyCandidate = {
+    channelId: 'legacy',
+    channelName: 'Legacy settings',
+    apiKey: getSecrets().openaiApiKey,
+    baseUrl: settings.openaiBaseUrl || config.openaiBaseUrl || 'https://api.openai.com/v1',
+    model: settings.openaiModel || config.openaiModel,
+    temperature: settings.openaiTemperature ?? config.openaiTemperature ?? 0.8,
+    maxTokens: settings.openaiMaxTokens ?? config.openaiMaxTokens,
+    timeoutMs: settings.openaiTimeoutMs || config.openaiTimeoutMs || 45000
+  };
+  const attemptsLegacy = [{ channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, ok: validation.ok }];
+  if (!validation.ok) {
+    const repaired = await repairPostText(text, validation, pack, settings, legacyCandidate);
+    validation = repaired.validation;
+    finalText = validation.text;
+    attemptsLegacy.push({ channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, ok: validation.ok, repaired: true, length: validation.length });
+  }
+  if (!validation.ok) throw new Error(`${validationError(validation)}:text=${finalText}`);
+  return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
 module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens };
