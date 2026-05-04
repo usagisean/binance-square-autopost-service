@@ -111,6 +111,8 @@ async function handleApi(req, res, url) {
           baseUrl: ch.baseUrl,
           enabled: ch.enabled,
           priority: ch.priority,
+          apiMode: ch.apiMode || 'auto',
+          reasoning: ch.reasoning === true,
           hasApiKey: ch.hasApiKey,
           apiKeyMasked: ch.apiKeyMasked,
           modelCount: (ch.models || []).length,
@@ -188,14 +190,15 @@ async function handleApi(req, res, url) {
         temperature: channel.temperature,
         maxTokens: Number(channel.maxTokens || 512),
         timeoutMs: channel.timeoutMs,
+        apiMode: channel.apiMode || 'auto',
         reasoning: channel.reasoning === true
       };
       try {
         const text = await callOpenAIWithCandidate('请只回复“连接正常”四个字。', candidate);
-        attempts.push({ model: modelId, ok: true, maxTokensUsed: effectiveMaxTokens(candidate) });
-        return sendJson(res, 200, { ok: true, channelId: channel.id, channelName: channel.name, model: modelId, requestedModel: model, fallbackUsed: modelId !== model, durationMs: Date.now() - startedAt, maxTokensUsed: effectiveMaxTokens(candidate), text, attempts });
+        attempts.push({ model: modelId, ok: true, apiMode: candidate.apiMode, maxTokensUsed: effectiveMaxTokens(candidate) });
+        return sendJson(res, 200, { ok: true, channelId: channel.id, channelName: channel.name, apiMode: candidate.apiMode, model: modelId, requestedModel: model, fallbackUsed: modelId !== model, durationMs: Date.now() - startedAt, maxTokensUsed: effectiveMaxTokens(candidate), text, attempts });
       } catch (err) {
-        attempts.push({ model: modelId, ok: false, maxTokensUsed: effectiveMaxTokens(candidate), error: err.message || String(err) });
+        attempts.push({ model: modelId, ok: false, apiMode: candidate.apiMode, maxTokensUsed: effectiveMaxTokens(candidate), error: err.message || String(err) });
       }
     }
     throw new Error(`llm_test_all_models_failed:${attempts.map(a => `${a.model}:${a.error}`).join(' | ')}`);

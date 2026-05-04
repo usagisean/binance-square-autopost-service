@@ -14,7 +14,7 @@
 - 定时发布，默认每 20 分钟检查一次
 - 每日发帖计数与上限
 - Binance futures 数据优先；遇到 451 或不可用时 fallback 到 `www.binance.com/api/v3` 现货数据
-- OpenAI-compatible Chat Completions；也支持 `LLM_PROVIDER=mock` 本地测试
+- OpenAI-compatible `chat/completions`、`/completions`、`responses` 三种模式；也支持 `LLM_PROVIDER=mock` 本地测试
 - Binance Square OpenAPI 发布
 - Telegram 成功/失败通知（可选）
 - Web 后台配置 Telegram Bot Token / Chat ID 并发送测试消息
@@ -72,14 +72,16 @@ TELEGRAM_CHAT_ID=...
 
 ### OpenAI-compatible / 中转站配置
 
-服务调用的是标准 Chat Completions：
+服务默认使用后台里的“API 模式”。`auto` 会按顺序尝试：
 
 ```text
 POST {OPENAI_BASE_URL}/chat/completions
+POST {OPENAI_BASE_URL}/completions
+POST {OPENAI_BASE_URL}/responses
 Authorization: Bearer {OPENAI_API_KEY}
 ```
 
-所以只要你的中转站兼容 OpenAI `/v1/chat/completions`，填：
+所以只要你的中转站兼容 OpenAI 任一文本生成接口，填：
 
 ```env
 OPENAI_BASE_URL=https://你的中转站域名/v1
@@ -90,6 +92,7 @@ OPENAI_MODEL=中转站支持的模型名
 推荐直接在 Web 后台的“模型渠道配置”中维护：
 
 - 渠道名、Base URL、API Key
+- API 模式：一般选 `auto`；若要贴近 OpenClaw 的 `openai-completions`，可选 `chat/completions`；旧版补全接口选 `/completions`
 - 从 `{OPENAI_BASE_URL}/models` 拉取模型
 - 每行一个模型 ID，按顺序设置最多 10 个 fallback 模型
 - “测试首选模型”确认当前渠道能正常返回内容

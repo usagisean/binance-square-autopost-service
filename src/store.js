@@ -137,6 +137,14 @@ function normalizeModelId(value = '') {
   return String(value || '').trim().replace(/[‐‑‒–—―−]/g, '-');
 }
 
+function normalizeApiMode(value = 'auto') {
+  const v = String(value || 'auto').trim().toLowerCase().replace(/_/g, '-');
+  if (['auto', 'chat', 'completions', 'responses'].includes(v)) return v;
+  if (['chat-completions', 'openai-completions', 'openai-chat-completions'].includes(v)) return 'chat';
+  if (['legacy', 'legacy-completions', 'text-completions', 'openai-legacy-completions'].includes(v)) return 'completions';
+  return 'auto';
+}
+
 function normalizeModelList(models = []) {
   const seen = new Set();
   return (Array.isArray(models) ? models : String(models || '').split(/\r?\n|,/))
@@ -161,6 +169,7 @@ function defaultLlmConfig() {
       apiKey: secrets.openaiApiKey || config.openaiApiKey || '',
       enabled: true,
       priority: 1,
+      apiMode: 'auto',
       reasoning: false,
       temperature: config.openaiTemperature,
       maxTokens: config.openaiMaxTokens,
@@ -187,6 +196,7 @@ function normalizeLlmConfig(raw = {}) {
       apiKey: String(ch.apiKey || '').trim(),
       enabled: ch.enabled !== false,
       priority: Math.max(1, Number(ch.priority || idx + 1)),
+      apiMode: normalizeApiMode(ch.apiMode || ch.api || 'auto'),
       reasoning: ch.reasoning === true,
       temperature: Math.max(0, Math.min(2, Number(ch.temperature ?? config.openaiTemperature))),
       maxTokens: Math.max(1, Number(ch.maxTokens || config.openaiMaxTokens)),
@@ -260,6 +270,7 @@ function getLlmCandidates() {
         temperature: channel.temperature,
         maxTokens: channel.maxTokens,
         timeoutMs: channel.timeoutMs,
+        apiMode: channel.apiMode || 'auto',
         reasoning: channel.reasoning === true,
         channelPriority: channel.priority,
         modelPriority: model.priority
@@ -374,6 +385,7 @@ module.exports = {
   setLlmChannelModels,
   getLlmCandidates,
   normalizeModelId,
+  normalizeApiMode,
   listPrompts,
   getActivePrompt,
   createPrompt,

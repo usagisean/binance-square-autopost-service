@@ -54,28 +54,39 @@ async function callOpenAI(prompt, settings) {
   });
 }
 
-function extractChoiceText(json) {
-  const choice = json?.choices?.[0];
-  const content = choice?.message?.content;
+function textFromContent(content) {
   if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content.map(part => {
-      if (typeof part === 'string') return part;
-      return part?.text || part?.content || '';
-    }).join('');
-  }
-  if (typeof choice?.text === 'string') return choice.text;
-  if (typeof json?.output_text === 'string') return json.output_text;
-  if (Array.isArray(json?.output)) {
-    return json.output.map(item => {
-      if (typeof item?.content === 'string') return item.content;
-      if (Array.isArray(item?.content)) {
-        return item.content.map(part => part?.text || part?.value || part?.content || '').join('');
-      }
-      return item?.text || '';
-    }).join('');
+  if (!content) return '';
+  if (Array.isArray(content)) return content.map(textFromContent).join('');
+  if (typeof content === 'object') {
+    if (typeof content.text === 'string') return content.text;
+    if (typeof content.value === 'string') return content.value;
+    if (typeof content.content === 'string') return content.content;
+    if (Array.isArray(content.content)) return textFromContent(content.content);
+    if (typeof content.output_text === 'string') return content.output_text;
   }
   return '';
+}
+
+function extractChoiceText(json) {
+  const candidates = [];
+  if (typeof json?.output_text === 'string') candidates.push(json.output_text);
+  if (Array.isArray(json?.choices)) {
+    for (const choice of json.choices) {
+      candidates.push(textFromContent(choice?.message?.content));
+      candidates.push(textFromContent(choice?.delta?.content));
+      candidates.push(textFromContent(choice?.text));
+    }
+  }
+  if (Array.isArray(json?.output)) {
+    for (const item of json.output) {
+      candidates.push(textFromContent(item?.content));
+      candidates.push(textFromContent(item?.text));
+      candidates.push(textFromContent(item?.output_text));
+    }
+  }
+  candidates.push(textFromContent(json?.content));
+  return candidates.map(x => String(x || '').trim()).find(Boolean) || '';
 }
 
 function isReasoningLikeModel(candidateOrModel = '') {
@@ -92,25 +103,41 @@ function effectiveMaxTokens(candidate = {}) {
   return base;
 }
 
+function normalizeApiMode(value = 'auto') {
+  const v = String(value || 'auto').trim().toLowerCase().replace(/_/g, '-');
+  if (['auto', 'chat', 'completions', 'responses'].includes(v)) return v;
+  if (['chat-completions', 'openai-completions', 'openai-chat-completions'].includes(v)) return 'chat';
+  if (['legacy', 'legacy-completions', 'text-completions', 'openai-legacy-completions'].includes(v)) return 'completions';
+  return 'auto';
+}
+
+function shortJson(json, max = 240) {
+  try { return JSON.stringify(json).slice(0, max); } catch { return String(json).slice(0, max); }
+}
+
 async function callOpenAIWithCandidate(prompt, candidate) {
   if (!candidate?.apiKey) throw new Error('missing_openai_api_key');
   const baseUrl = String(candidate.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const chatUrl = `${baseUrl}/chat/completions`;
+  const completionsUrl = `${baseUrl}/completions`;
   const responsesUrl = `${baseUrl}/responses`;
+  const apiMode = normalizeApiMode(candidate.apiMode || 'auto');
   const reasoningLike = isReasoningLikeModel(candidate);
   const timeoutMs = Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000);
   const headers = { Authorization: `Bearer ${candidate.apiKey}` };
+  const systemText = '你只输出最终可发布的纯文本短帖，不解释过程。';
   const maybeTemperature = () => {
     // Several GPT-5/o-series relays either reject or silently mishandle non-default temperature.
     if (reasoningLike) return {};
     return { temperature: Number(candidate.temperature ?? config.openaiTemperature ?? 0.8) };
   };
+  const model = candidate.model || config.openaiModel;
   const runChat = async (maxTokens, tokenParam = reasoningLike ? 'max_completion_tokens' : 'max_tokens') => {
     const payload = {
-      model: candidate.model || config.openaiModel,
+      model,
       ...maybeTemperature(),
       messages: [
-        { role: 'system', content: '你只输出最终可发布的纯文本短帖，不解释过程。' },
+        { role: 'system', content: systemText },
         { role: 'user', content: prompt }
       ]
     };
@@ -125,46 +152,69 @@ async function callOpenAIWithCandidate(prompt, candidate) {
       }
       throw err;
     }
-    return { json, text: compactText(extractChoiceText(json)) };
+    return { label: `chat/completions:${tokenParam}:${maxTokens || 'none'}`, json, text: compactText(extractChoiceText(json)) };
+  };
+  const runCompletions = async (maxTokens) => {
+    const payload = {
+      model,
+      prompt: `${systemText}\n\n${prompt}\n`,
+      ...maybeTemperature()
+    };
+    if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_tokens = maxTokens;
+    const json = await postJson(completionsUrl, payload, { headers, timeoutMs });
+    return { label: `completions:max_tokens:${maxTokens || 'none'}`, json, text: compactText(extractChoiceText(json)) };
   };
   const runResponses = async (maxTokens) => {
     const payload = {
-      model: candidate.model || config.openaiModel,
-      instructions: '你只输出最终可发布的纯文本短帖，不解释过程。',
+      model,
+      instructions: systemText,
       input: prompt,
       ...maybeTemperature()
     };
     if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_output_tokens = maxTokens;
     const json = await postJson(responsesUrl, payload, { headers, timeoutMs });
-    return { json, text: compactText(extractChoiceText(json)) };
+    return { label: `responses:max_output_tokens:${maxTokens || 'none'}`, json, text: compactText(extractChoiceText(json)) };
   };
 
   const firstMaxTokens = effectiveMaxTokens(candidate);
-  const attempts = reasoningLike
-    ? [
-        () => runChat(firstMaxTokens, 'max_completion_tokens'),
-        () => runChat(Math.max(firstMaxTokens, 1200), 'max_tokens'),
-        () => runResponses(Math.max(firstMaxTokens, 1200)),
-        () => runChat(4096, 'max_tokens'),
-        () => runResponses(4096)
-      ]
-    : [
-        () => runChat(firstMaxTokens, 'max_tokens'),
-        () => runResponses(firstMaxTokens)
-      ];
-  let json = null;
+  let attempts = [];
+  if (apiMode === 'chat') {
+    attempts = reasoningLike
+      ? [() => runChat(firstMaxTokens, 'max_completion_tokens'), () => runChat(Math.max(firstMaxTokens, 1200), 'max_tokens')]
+      : [() => runChat(firstMaxTokens, 'max_tokens')];
+  } else if (apiMode === 'completions') {
+    attempts = [() => runCompletions(firstMaxTokens)];
+  } else if (apiMode === 'responses') {
+    attempts = [() => runResponses(firstMaxTokens)];
+  } else if (reasoningLike) {
+    attempts = [
+      () => runChat(firstMaxTokens, 'max_completion_tokens'),
+      () => runChat(Math.max(firstMaxTokens, 1200), 'max_tokens'),
+      () => runResponses(Math.max(firstMaxTokens, 1200)),
+      () => runCompletions(Math.max(firstMaxTokens, 1200)),
+      () => runChat(4096, 'max_tokens'),
+      () => runResponses(4096),
+      () => runCompletions(4096)
+    ];
+  } else {
+    attempts = [
+      () => runChat(firstMaxTokens, 'max_tokens'),
+      () => runCompletions(firstMaxTokens),
+      () => runResponses(firstMaxTokens)
+    ];
+  }
+
   const errors = [];
   for (const attempt of attempts) {
     try {
       const result = await attempt();
-      json = result.json;
       if (result.text) return result.text;
+      errors.push(`${result.label}:empty:${shortJson(result.json)}`);
     } catch (err) {
-      errors.push(err.message || String(err));
+      errors.push(`${err.message || String(err)}`);
     }
   }
-  if (!json && errors.length) throw new Error(`llm_request_failed:${errors.join(' | ')}`);
-  throw new Error(`llm_empty_response:${JSON.stringify(json).slice(0, 300)}${errors.length ? `; fallback_errors=${errors.join(' | ')}` : ''}`);
+  throw new Error(`llm_no_text_output:${errors.join(' | ')}`);
 }
 
 function validatePostText(text, pack, settings = getSettings()) {
