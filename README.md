@@ -8,6 +8,9 @@
 - Web 后台登录页：未登录只显示登录框，配置、密钥、运行记录均需 `ADMIN_TOKEN`
 - NewAPI 风格侧边栏后台：概览、Prompt、模型渠道、通知/密钥、任务设置、运行记录分区管理
 - Web 后台配置 OpenAI-compatible 渠道、API Key、拉取 `/models`、测试模型、设置最多 10 个 fallback 优先级
+- Web 后台配置情报源：新闻 RSS、KOL 手动源、宏观/地缘/名人效应备注、Coinglass Key、链上 API Keys
+- 自动发布安全阀：Lead 币种冷却、禁用词校验、近帖相似度校验、连续失败自动暂停
+- 条件式交易计划：基于真实行情/盘口/15m K 线生成方向、触发点、失效/止损位，Prompt 只能引用数据包内的计划
 - 概览页展示发帖热力图、今日额度、LLM / Publisher 状态；热力图按每日上限（默认 100）和当天 24 小时分布显示
 - 默认 preview-only：定时任务只生成内容给你看，不真实发帖
 - 通用 Job 配置：Job 名称、说明、语言、风格、Prompt 模板、模型中转站都可配置
@@ -57,7 +60,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1  # 或你的中转站：https://relay.
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4.1-mini      # 或中转站里的模型名
 OPENAI_TEMPERATURE=0.8
-OPENAI_MAX_TOKENS=180
+OPENAI_MAX_TOKENS=8192
 OPENAI_TIMEOUT_MS=45000
 
 BINANCE_SQUARE_OPENAPI_KEY=...
@@ -100,6 +103,31 @@ OPENAI_MODEL=中转站支持的模型名
 模型渠道配置会保存到 `data/llm_config.json`。旧版单一 `OPENAI_*` env 仍作为默认渠道 / fallback 保留。
 
 API Key / Binance Key 都可以在后台填。模型渠道 Key 保存到 `data/llm_config.json`，Binance Key 保存到 `data/secrets.json`。这些 `data/*.json` 已被 `.gitignore` 忽略，不会进 Git。
+
+### 配置热更新
+
+后台保存的这些配置都会写入 VPS 的 `data/*.json`，下一次手动预览、手动发布或定时任务会直接读取；不需要重新跑 GitHub Actions，也不需要重启容器：
+
+- Prompt、任务设置、发布模式、定时间隔、每日上限
+- 模型渠道、API Key、模型优先级、fallback 数量
+- Telegram / Binance Square Key
+- 情报源配置：RSS、KOL 手动源、Coinglass Key、链上 API Keys、宏观备注
+- 安全阀：Lead 冷却、禁用词、相似度阈值、连续失败暂停
+
+代码层面的更新（新增页面、字段、行情/情报抓取逻辑、发布逻辑）不是热更新；需要推送 GitHub 后由 Actions 部署，或在 VPS 上 `git pull && docker compose up -d --build`。
+
+### 内容长度、标签和交易计划建议
+
+如果要写方向、触发点、止损，建议在“任务设置”里设置：
+
+```text
+最短字符：180
+最长字符：360
+交易计划：开启
+交易计划模式：conditional
+```
+
+Binance Square 底部币种卡片由平台识别 `$BTC` 这类 Cashtag 后自动生成。不是所有币都会稳定出卡片；服务里提供“Square 标签优先币种”，会优先选择更常见、更容易被识别的币做 lead/peer，但仍以真实波动和成交活跃度为核心。
 
 示例模型优先级：
 
@@ -170,6 +198,8 @@ PUBLISH_MODE=preview
 - `PUT /api/llm-config`
 - `POST /api/llm-config/channels/:id/models/fetch`
 - `POST /api/llm-config/test`
+- `GET /api/intel-config`（加 `?reveal=1` 可在已授权后台显示完整 Key）
+- `PUT /api/intel-config`
 - `GET /api/prompts`
 - `POST /api/prompts`
 - `PUT /api/prompts/:id`
@@ -189,6 +219,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" http://127.0.0.1:8787/api/status
 - `data/settings.json`：后台设置，首次启动自动生成，已忽略 Git
 - `data/prompts.json`：Prompt 版本，首次启动自动生成，已忽略 Git
 - `data/llm_config.json`：模型渠道、API Key、模型优先级，已忽略 Git
+- `data/intel_config.json`：新闻 RSS、KOL 源、Coinglass Key、链上 API Keys、宏观备注，已忽略 Git
 - `data/secrets.json`：Web 后台保存的 API Key，已忽略 Git
 - `data/runs.jsonl`：运行日志，已忽略 Git
 - `data/daily_counter.json`：每日计数，已忽略 Git

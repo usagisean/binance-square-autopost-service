@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { config, masked } = require('./config');
-const { initStore, getSettings, saveSettings, getSecrets, saveSecrets, getLlmConfig, saveLlmConfig, setLlmChannelModels, listPrompts, createPrompt, updatePrompt, activatePrompt, getCounter, listRuns } = require('./store');
+const { initStore, getSettings, saveSettings, getSecrets, saveSecrets, getLlmConfig, saveLlmConfig, setLlmChannelModels, getIntelConfig, saveIntelConfig, listPrompts, createPrompt, updatePrompt, activatePrompt, getCounter, listRuns } = require('./store');
 const { schedulerStatus, startScheduler } = require('./scheduler');
 const { runOnce } = require('./workflow');
 const { buildMarketPack } = require('./marketPack');
@@ -87,6 +87,7 @@ async function handleApi(req, res, url) {
       });
     }
     const llmConfig = getLlmConfig({ revealKeys: false });
+    const intelConfig = getIntelConfig({ revealKeys: false });
     const llmConfigured = llmConfig.channels.some(ch => ch.enabled && ch.hasApiKey && (ch.models || []).some(m => m.enabled !== false));
     return sendJson(res, 200, {
       ok: true,
@@ -120,6 +121,14 @@ async function handleApi(req, res, url) {
         })),
         maxFallbackModels: llmConfig.maxFallbackModels
       },
+      intel: {
+        enabled: intelConfig.enabled,
+        newsCount: (intelConfig.newsRssUrls || []).filter(x => x.enabled !== false).length,
+        kolCount: (intelConfig.kolSources || []).filter(x => x.enabled !== false).length,
+        hasCoinglassApiKey: !!intelConfig.hasCoinglassApiKey,
+        onchainKeyCount: Object.values(intelConfig.onchainApiKeys || {}).filter(Boolean).length,
+        hasMacroNotes: !!intelConfig.macroNotes
+      },
       secrets: maskedSecrets(),
       authRequired: !!config.adminToken,
       authenticated: true
@@ -144,6 +153,14 @@ async function handleApi(req, res, url) {
   if (req.method === 'PUT' && url.pathname === '/api/llm-config') {
     const body = await readBody(req);
     return sendJson(res, 200, { ok: true, llmConfig: saveLlmConfig(body.llmConfig || body) });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/intel-config') {
+    const revealKeys = url.searchParams.get('reveal') === '1';
+    return sendJson(res, 200, { ok: true, intelConfig: getIntelConfig({ revealKeys }) });
+  }
+  if (req.method === 'PUT' && url.pathname === '/api/intel-config') {
+    const body = await readBody(req);
+    return sendJson(res, 200, { ok: true, intelConfig: saveIntelConfig(body.intelConfig || body) });
   }
   const llmModelFetch = url.pathname.match(/^\/api\/llm-config\/channels\/([^/]+)\/models\/fetch$/);
   if (llmModelFetch && req.method === 'POST') {

@@ -47,7 +47,7 @@ const config = {
   openaiApiKey: env('OPENAI_API_KEY', ''),
   openaiModel: env('OPENAI_MODEL', 'gpt-4.1-mini'),
   openaiTemperature: envNumber('OPENAI_TEMPERATURE', 0.8),
-  openaiMaxTokens: envNumber('OPENAI_MAX_TOKENS', 180),
+  openaiMaxTokens: envNumber('OPENAI_MAX_TOKENS', 8192),
   openaiTimeoutMs: envNumber('OPENAI_TIMEOUT_MS', 45000),
   binanceSquareOpenApiKey: env('BINANCE_SQUARE_OPENAPI_KEY', ''),
   telegramBotToken: env('TELEGRAM_BOT_TOKEN', ''),

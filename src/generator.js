@@ -1,6 +1,6 @@
 const { postJson, request } = require('./httpClient');
 const { config } = require('./config');
-const { getSettings, getActivePrompt, getSecrets, getLlmCandidates } = require('./store');
+const { getSettings, getActivePrompt, getSecrets, getLlmCandidates, listRuns } = require('./store');
 
 function cashtag(symbol) { return `$${String(symbol || '').replace(/^\$/, '').toUpperCase()}`; }
 function compactText(text) {
@@ -11,11 +11,11 @@ function renderTemplate(template, pack, settings = getSettings()) {
   const peer = pack.trio.peer.symbol;
   const anchor = pack.trio.anchor.symbol;
   const voiceAngles = [
-    '先看谁在抢主动权，再看谁只是被情绪带着跑。',
+    '先看谁在带节奏，再看谁只是被情绪带着跑。',
     '从合约拥挤度和盘口承接切入，别写成涨跌榜复读。',
-    '用交易员盘中复盘口吻，重点写强弱差和下一步观察位。',
+    '用交易员盘中复盘口吻，重点写强弱差、触发点和失效位。',
     '从情绪是否过热切入，语气克制但要有判断。',
-    '用一句盘感开场，然后用数据把主动腿、跟随腿、风险锚串起来。',
+    '用一句盘感开场，然后用数据把带节奏的币、跟随币、风险锚串起来。',
     '避免固定开头，像刚盯完盘顺手发的一段观察。'
   ];
   const voiceAngle = voiceAngles[Math.floor(Math.random() * voiceAngles.length)];
@@ -27,8 +27,8 @@ function renderTemplate(template, pack, settings = getSettings()) {
     CONTENT_SOURCE: settings.contentSource || '',
     POST_TARGET: settings.postTarget || '',
     VOICE_ANGLE: voiceAngle,
-    MIN_POST_CHARS: String(settings.minPostChars || 55),
-    MAX_POST_CHARS: String(settings.maxPostChars || 110),
+    MIN_POST_CHARS: String(settings.minPostChars || 180),
+    MAX_POST_CHARS: String(settings.maxPostChars || 360),
     LEAD: lead,
     PEER: peer,
     ANCHOR: anchor,
@@ -37,6 +37,10 @@ function renderTemplate(template, pack, settings = getSettings()) {
     ANCHOR_CASHTAG: cashtag(anchor),
     FACTS: (pack.facts || []).join('\n'),
     TAKEAWAYS: (pack.takeaways || []).join('\n'),
+    TRADE_PLAN: pack.tradePlan?.summary || '',
+    TRADE_PLAN_JSON: pack.tradePlan ? JSON.stringify(pack.tradePlan, null, 2) : '',
+    EXTERNAL_INTEL_JSON: pack.externalIntel ? JSON.stringify(pack.externalIntel, null, 2) : '',
+    BANNED_PHRASES: (settings.bannedPhrases || []).join('、'),
     MARKET_PACK_JSON: JSON.stringify(pack, null, 2)
   };
   return String(template || '').replace(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g, (_, key) => vars[key] ?? '');
@@ -46,8 +50,10 @@ function mockGenerate(pack) {
   const { lead, peer, anchor } = pack.trio;
   const l = cashtag(lead.symbol), p = cashtag(peer.symbol), a = cashtag(anchor.symbol);
   const leadStronger = Number(lead.change1h || 0) >= Number(peer.change1h || 0);
-  if (leadStronger) return `${l} 今天更像主动腿，${p} 只是跟着放波动，${a} 还在给风险偏好定锚；这波我先看承接和换手，不急着追。`;
-  return `${l} 负责把波动打出来，${p} 短线弹性反而更冲，${a} 还在给风险偏好定锚；这波我先看换手，不急着追。`;
+  const plan = pack.tradePlan?.summary || `${lead.symbol} 条件计划：先观望；等突破前高或跌破近端支撑后再跟，失效位看区间另一侧。`;
+  const f = (pack.facts || []).slice(0, 4).join('；');
+  if (leadStronger) return `${l} 这轮更像在带节奏，${p} 只是跟着放波动，${a} 还在给风险偏好定锚。${f}。我不想在高波动里硬追，接下来只看两个点：换手能不能继续放大，以及回踩有没有承接。${plan}`;
+  return `${l} 把波动打出来了，但短线强度不如 ${p}，${a} 仍是风险偏好的锚。${f}。这种盘我不会只看涨跌幅，先看盘口承接和相对强弱，谁先站回节奏谁才有交易价值。${plan}`;
 }
 
 async function callOpenAI(prompt, settings) {
@@ -330,18 +336,50 @@ async function callOpenAIWithCandidate(prompt, candidate) {
   throw new Error(`llm_no_text_output:${errors.join(' | ')}`);
 }
 
+function textBigrams(text) {
+  const chars = String(text || '').replace(/\s+/g, '').split('');
+  const grams = new Set();
+  for (let i = 0; i < chars.length - 1; i++) grams.add(chars[i] + chars[i + 1]);
+  return grams;
+}
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let intersection = 0;
+  for (const x of a) if (b.has(x)) intersection++;
+  return intersection / (a.size + b.size - intersection);
+}
+function maxRecentSimilarity(text, settings = getSettings()) {
+  const threshold = Number(settings.similarityThreshold || 0);
+  if (!Number.isFinite(threshold) || threshold <= 0) return 0;
+  const base = textBigrams(text);
+  let max = 0;
+  for (const run of listRuns(30).filter(r => r.postText && ['published', 'preview'].includes(r.status)).slice(0, 12)) {
+    max = Math.max(max, jaccard(base, textBigrams(run.postText)));
+  }
+  return max;
+}
+
 function validatePostText(text, pack, settings = getSettings()) {
   const errors = [];
   const clean = compactText(text);
   const len = [...clean].length;
-  if (len < Number(settings.minPostChars || 55)) errors.push(`too_short:${len}`);
-  if (len > Number(settings.maxPostChars || 110)) errors.push(`too_long:${len}`);
-  if (/不构成投资建议|以上仅供参考|公开信息显示|简短原因|简要原因|可能原因/.test(clean)) errors.push('template_or_disclaimer_phrase');
+  if (len < Number(settings.minPostChars || 180)) errors.push(`too_short:${len}`);
+  if (len > Number(settings.maxPostChars || 360)) errors.push(`too_long:${len}`);
+  const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '主动腿'];
+  const banned = [...new Set([...fixedBanned, ...(settings.bannedPhrases || [])].map(s => String(s || '').trim()).filter(Boolean))];
+  for (const phrase of banned) {
+    if (clean.includes(phrase)) errors.push(`banned_phrase:${phrase}`);
+  }
   if (settings.requireCashtags) {
     for (const symbol of [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol]) {
       if (!clean.includes(cashtag(symbol))) errors.push(`missing_cashtag:${symbol}`);
     }
   }
+  if (settings.includeTradePlan !== false && String(settings.tradePlanMode || '').toLowerCase() !== 'off' && pack.tradePlan) {
+    if (!/(止损|失效|突破|跌破|回踩|反抽|偏多|偏空|看多|看空|观望)/.test(clean)) errors.push('missing_trade_plan');
+  }
+  const sim = maxRecentSimilarity(clean, settings);
+  if (sim >= Number(settings.similarityThreshold || 0.72)) errors.push(`too_similar:${sim.toFixed(2)}`);
   return { ok: errors.length === 0, errors, text: clean, length: len };
 }
 
@@ -350,8 +388,8 @@ function validationError(validation) {
 }
 
 function repairPromptForPost(text, validation, pack, settings = getSettings()) {
-  const min = Number(settings.minPostChars || 55);
-  const max = Number(settings.maxPostChars || 110);
+  const min = Number(settings.minPostChars || 180);
+  const max = Number(settings.maxPostChars || 360);
   const symbols = [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol];
   const tags = symbols.map(cashtag).join(' ');
   return `下面这条 Binance Square 正文已经生成，但没有通过本地校验：${validation.errors.join(',')}。
@@ -363,7 +401,9 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 2. 必须保留并自然提到这 3 个 Cashtag：${tags}。
 3. 必须写出谁更强、谁跟随、谁是风险锚/情绪锚、接下来盯什么。
 4. 只能使用 facts / takeaways 里的真实数据，禁止编造。
-5. 不要标题、不要项目符号、不要免责声明、不要报告腔。
+5. 如果 facts 里有条件计划，必须自然写出方向、触发点、失效/止损。
+6. 不要标题、不要项目符号、不要免责声明、不要报告腔。
+7. 禁止出现这些表达：主动腿、${(settings.bannedPhrases || []).join('、')}。
 
 原文：
 ${text}
@@ -372,7 +412,10 @@ facts：
 ${(pack.facts || []).join('\n')}
 
 交易解读：
-${(pack.takeaways || []).join('\n')}`;
+${(pack.takeaways || []).join('\n')}
+
+条件计划：
+${pack.tradePlan?.summary || ''}`;
 }
 
 async function repairPostText(text, validation, pack, settings, candidate) {

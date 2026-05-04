@@ -11,7 +11,8 @@ const paths = {
   cache: path.join(DATA_DIR, 'market_pack_cache.json'),
   scheduler: path.join(DATA_DIR, 'scheduler_state.json'),
   secrets: path.join(DATA_DIR, 'secrets.json'),
-  llmConfig: path.join(DATA_DIR, 'llm_config.json')
+  llmConfig: path.join(DATA_DIR, 'llm_config.json'),
+  intelConfig: path.join(DATA_DIR, 'intel_config.json')
 };
 
 const defaultSettings = {
@@ -26,13 +27,22 @@ const defaultSettings = {
   intervalMinutes: 20,
   maxDailyPosts: 100,
   timezone: 'Asia/Shanghai',
-  minPostChars: 55,
-  maxPostChars: 110,
+  minPostChars: 180,
+  maxPostChars: 360,
   bannedSymbols: ['MON'],
   minSpotQuoteVolume: 5000000,
   marketCacheMaxAgeMinutes: 360,
   requireCashtags: true,
   notifyTelegram: true,
+  leadCooldownRuns: 3,
+  leadCooldownMinutes: 180,
+  maxConsecutiveFailures: 3,
+  similarityThreshold: 0.72,
+  bannedPhrases: ['主动腿', '拧巴', '玄学', '抽象', '离谱', '绷不住', '上头', '杀疯了', '起飞', '爆拉', '闭眼', '梭哈', '铁子', '兄弟们'],
+  includeTradePlan: true,
+  tradePlanMode: 'conditional',
+  preferSquareTagSymbols: true,
+  squareTagSymbols: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'PEPE', 'WIF', 'BONK', 'PENGU', 'BABY', 'SUI', 'ENA', 'LINK', 'AAVE', 'AVAX', 'ADA', 'ZEC'],
   llmProvider: config.llmProvider,
   openaiBaseUrl: config.openaiBaseUrl,
   openaiModel: config.openaiModel,
@@ -103,6 +113,25 @@ function saveSettings(patch) {
   next.openaiTimeoutMs = Math.max(5000, Number(next.openaiTimeoutMs || defaultSettings.openaiTimeoutMs));
   if (!Array.isArray(next.bannedSymbols)) {
     next.bannedSymbols = String(next.bannedSymbols || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  } else {
+    next.bannedSymbols = next.bannedSymbols.map(s => String(s).trim().toUpperCase()).filter(Boolean);
+  }
+  next.leadCooldownRuns = Math.max(0, Number(next.leadCooldownRuns ?? defaultSettings.leadCooldownRuns));
+  next.leadCooldownMinutes = Math.max(0, Number(next.leadCooldownMinutes ?? defaultSettings.leadCooldownMinutes));
+  next.maxConsecutiveFailures = Math.max(0, Number(next.maxConsecutiveFailures ?? defaultSettings.maxConsecutiveFailures));
+  next.similarityThreshold = Math.max(0, Math.min(1, Number(next.similarityThreshold ?? defaultSettings.similarityThreshold)));
+  next.includeTradePlan = next.includeTradePlan !== false;
+  next.tradePlanMode = ['conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
+  next.preferSquareTagSymbols = next.preferSquareTagSymbols !== false;
+  if (!Array.isArray(next.bannedPhrases)) {
+    next.bannedPhrases = String(next.bannedPhrases || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
+  } else {
+    next.bannedPhrases = next.bannedPhrases.map(s => String(s).trim()).filter(Boolean);
+  }
+  if (!Array.isArray(next.squareTagSymbols)) {
+    next.squareTagSymbols = String(next.squareTagSymbols || '').split(/\r?\n|,/).map(s => s.trim().toUpperCase()).filter(Boolean);
+  } else {
+    next.squareTagSymbols = next.squareTagSymbols.map(s => String(s).trim().toUpperCase()).filter(Boolean);
   }
   writeJson(paths.settings, next);
   return next;
@@ -281,6 +310,77 @@ function getLlmCandidates() {
   return candidates;
 }
 
+
+function normalizeLines(value = []) {
+  return (Array.isArray(value) ? value : String(value || '').split(/\r?\n/))
+    .map(x => String(x || '').trim())
+    .filter(Boolean);
+}
+
+function normalizeKeyedSources(value = []) {
+  return (Array.isArray(value) ? value : []).map((item, idx) => ({
+    id: String(item?.id || `source_${idx + 1}`).trim().replace(/[^a-zA-Z0-9_-]/g, '_') || `source_${idx + 1}`,
+    name: String(item?.name || item?.id || `Source ${idx + 1}`).trim(),
+    value: String(item?.value || item?.url || item?.handle || '').trim(),
+    enabled: item?.enabled !== false,
+    priority: Math.max(1, Number(item?.priority || idx + 1))
+  })).filter(x => x.value).sort((a, b) => a.priority - b.priority).slice(0, 50);
+}
+
+function defaultIntelConfig() {
+  return {
+    enabled: false,
+    newsRssUrls: [],
+    kolSources: [],
+    coinglassApiKey: '',
+    onchainApiKeys: {},
+    macroNotes: '',
+    maxNewsItems: 8,
+    maxKolItems: 8,
+    updatedAt: nowIso()
+  };
+}
+
+function normalizeIntelConfig(raw = {}) {
+  const current = { ...defaultIntelConfig(), ...(raw || {}) };
+  return {
+    enabled: current.enabled === true,
+    newsRssUrls: normalizeKeyedSources(current.newsRssUrls),
+    kolSources: normalizeKeyedSources(current.kolSources),
+    coinglassApiKey: String(current.coinglassApiKey || '').trim(),
+    onchainApiKeys: typeof current.onchainApiKeys === 'object' && current.onchainApiKeys ? current.onchainApiKeys : {},
+    macroNotes: String(current.macroNotes || '').trim(),
+    maxNewsItems: Math.max(0, Math.min(30, Number(current.maxNewsItems || 8))),
+    maxKolItems: Math.max(0, Math.min(30, Number(current.maxKolItems || 8))),
+    updatedAt: current.updatedAt || nowIso()
+  };
+}
+
+function getIntelConfig({ revealKeys = false } = {}) {
+  const cfg = normalizeIntelConfig(readJson(paths.intelConfig, null) || defaultIntelConfig());
+  return {
+    ...cfg,
+    coinglassApiKey: revealKeys ? cfg.coinglassApiKey : '',
+    coinglassApiKeyMasked: cfg.coinglassApiKey ? (cfg.coinglassApiKey.length <= 10 ? `${cfg.coinglassApiKey.slice(0, 2)}...${cfg.coinglassApiKey.slice(-2)}` : `${cfg.coinglassApiKey.slice(0, 5)}...${cfg.coinglassApiKey.slice(-4)}`) : '',
+    hasCoinglassApiKey: !!cfg.coinglassApiKey,
+    onchainApiKeys: revealKeys ? cfg.onchainApiKeys : Object.fromEntries(Object.entries(cfg.onchainApiKeys || {}).map(([k, v]) => [k, v ? 'configured' : '']))
+  };
+}
+
+function saveIntelConfig(next = {}) {
+  const current = normalizeIntelConfig(readJson(paths.intelConfig, null) || defaultIntelConfig());
+  const hasNewCoinglass = Object.prototype.hasOwnProperty.call(next || {}, 'coinglassApiKey') && String(next.coinglassApiKey || '').trim();
+  const clearCoinglass = next?.clearCoinglassApiKey === true;
+  const cfg = normalizeIntelConfig({
+    ...current,
+    ...next,
+    coinglassApiKey: clearCoinglass ? '' : (hasNewCoinglass ? String(next.coinglassApiKey || '').trim() : current.coinglassApiKey),
+    updatedAt: nowIso()
+  });
+  writeJson(paths.intelConfig, cfg);
+  return getIntelConfig({ revealKeys: true });
+}
+
 function listPrompts() {
   return readJson(paths.prompts, []);
 }
@@ -384,6 +484,8 @@ module.exports = {
   saveLlmConfig,
   setLlmChannelModels,
   getLlmCandidates,
+  getIntelConfig,
+  saveIntelConfig,
   normalizeModelId,
   normalizeApiMode,
   listPrompts,

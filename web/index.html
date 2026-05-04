@@ -47,6 +47,7 @@
       <button class="side-btn active" data-tab="overview" onclick="showTab('overview')"><span>📊</span><b>概览</b><small>运行状态与热力图</small></button>
       <button class="side-btn" data-tab="prompt" onclick="showTab('prompt')"><span>✍️</span><b>Prompt</b><small>编辑生成策略</small></button>
       <button class="side-btn" data-tab="models" onclick="showTab('models')"><span>🧠</span><b>模型渠道</b><small>中转站与优先级</small></button>
+      <button class="side-btn" data-tab="intel" onclick="showTab('intel')"><span>🛰️</span><b>情报源</b><small>新闻 / KOL / 链上</small></button>
       <button class="side-btn" data-tab="notify" onclick="showTab('notify')"><span>🔔</span><b>通知 / 密钥</b><small>TG 与发布 Key</small></button>
       <button class="side-btn" data-tab="settings" onclick="showTab('settings')"><span>⚙️</span><b>任务设置</b><small>频率、额度、模式</small></button>
       <button class="side-btn" data-tab="runs" onclick="showTab('runs')"><span>🧾</span><b>运行记录</b><small>最近输出与错误</small></button>
@@ -86,7 +87,7 @@
       <h2>Prompt 编辑</h2>
       <div class="row"><select id="promptSelect" onchange="selectPrompt()"></select><button class="secondary" onclick="newPrompt()">新建</button><button onclick="savePrompt()">保存 Prompt</button><button class="secondary" onclick="activatePrompt()">设为启用</button></div>
       <label>名称</label><input id="promptName">
-      <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}, {{VOICE_ANGLE}}, {{MIN_POST_CHARS}}, {{MAX_POST_CHARS}}）</label>
+      <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}, {{VOICE_ANGLE}}, {{MIN_POST_CHARS}}, {{MAX_POST_CHARS}}, {{TRADE_PLAN}}, {{TRADE_PLAN_JSON}}, {{EXTERNAL_INTEL_JSON}}, {{BANNED_PHRASES}}）</label>
       <textarea id="promptContent"></textarea>
     </section>
   </section>
@@ -137,6 +138,24 @@
     </div>
   </section>
 
+  <section id="tab-intel" class="tab">
+    <section class="card">
+      <h2>情报源配置</h2>
+      <p class="muted hint">保存到 VPS 的 <code>data/intel_config.json</code>，不提交 Git。保存后下一轮生成直接读取，属于配置热更新。当前版本会拉取 RSS 标题并接入人工备注；Coinglass / 链上 Key 先保存为后续数据接口使用。</p>
+      <label><input type="checkbox" id="intelEnabled">启用情报源</label>
+      <label>新闻 RSS URLs（每行一个）</label><textarea id="newsRssUrls" class="small-textarea" placeholder="https://example.com/rss"></textarea>
+      <label>KOL 手动源（每行一个，支持 @handle / URL / 备注）</label><textarea id="kolSources" class="small-textarea" placeholder="@example_kol 或 https://x.com/example"></textarea>
+      <label>宏观 / 地缘 / 名人效应手动备注（会进入本轮 facts，必须真实填写）</label><textarea id="macroNotes" class="small-textarea" placeholder="例如：今晚关注 FOMC / 原油异动 / 美股风险偏好...；留空则不写入正文。"></textarea>
+      <div class="grid2">
+        <div><label>Coinglass API Key（留空不修改）</label><input id="coinglassApiKey" type="password" autocomplete="off" placeholder="Coinglass key"></div>
+        <div><label>链上 API Keys JSON（可选，留空不修改）</label><textarea id="onchainApiKeys" class="small-textarea" placeholder='{"arkham":"...","nansen":"..."}'></textarea></div>
+      </div>
+      <div class="grid2"><div><label>最多新闻条数</label><input id="maxNewsItems" type="number" min="0" max="30" value="8"></div><div><label>最多 KOL 条数</label><input id="maxKolItems" type="number" min="0" max="30" value="8"></div></div>
+      <div class="row" style="margin-top:14px"><button onclick="saveIntelConfig()">保存情报源配置</button><button class="secondary" onclick="loadIntelConfig(true)">重新加载</button></div>
+      <pre id="intelOutput">等待加载情报源配置...</pre>
+    </section>
+  </section>
+
   <section id="tab-settings" class="tab">
     <section class="card">
       <h2>任务设置</h2>
@@ -148,6 +167,14 @@
       <div class="grid4"><div><label>间隔分钟</label><input id="intervalMinutes" type="number" min="1"></div><div><label>每日上限</label><input id="maxDailyPosts" type="number" min="1"></div><div><label>最短字符</label><input id="minPostChars" type="number"></div><div><label>最长字符</label><input id="maxPostChars" type="number"></div></div>
       <label>LLM Provider</label><select id="llmProvider"><option value="mock">mock 本地测试</option><option value="openai">OpenAI-compatible 渠道配置</option></select>
       <label>禁用币种（逗号分隔）</label><input id="bannedSymbols">
+      <h3>自动发布安全阀</h3>
+      <div class="grid4"><div><label>Lead 冷却次数</label><input id="leadCooldownRuns" type="number" min="0"></div><div><label>Lead 冷却分钟</label><input id="leadCooldownMinutes" type="number" min="0"></div><div><label>连续失败自动暂停</label><input id="maxConsecutiveFailures" type="number" min="0"></div><div><label>相似度阈值</label><input id="similarityThreshold" type="number" min="0" max="1" step="0.01"></div></div>
+      <label>禁用词 / 禁止表达（每行一个）</label><textarea id="bannedPhrases" class="small-textarea" placeholder="拧巴&#10;主动腿&#10;起飞"></textarea>
+      <h3>交易计划与标签</h3>
+      <label><input type="checkbox" id="includeTradePlan">正文加入条件式交易计划（方向 / 触发 / 失效或止损）</label>
+      <label>交易计划模式</label><select id="tradePlanMode"><option value="conditional">conditional：条件式，不强喊单</option><option value="levels">levels：更偏价位计划</option><option value="off">off：不写交易计划</option></select>
+      <label><input type="checkbox" id="preferSquareTagSymbols">优先选择更容易被 Square 识别出底部币种卡片的币</label>
+      <label>Square 标签优先币种（每行或逗号分隔）</label><textarea id="squareTagSymbols" class="small-textarea" placeholder="BTC,ETH,SOL,DOGE,PEPE"></textarea>
       <div style="height:14px"></div><button onclick="saveSettings()">保存任务设置</button>
     </section>
   </section>
@@ -160,7 +187,7 @@
 
 <script>
 const $=id=>document.getElementById(id);
-let prompts=[]; let currentSettings={}; let llmConfig={channels:[],maxFallbackModels:10}; let selectedChannelId=''; let runs=[];
+let prompts=[]; let currentSettings={}; let llmConfig={channels:[],maxFallbackModels:10}; let intelConfig={}; let selectedChannelId=''; let runs=[];
 const tokenStore='adminToken';
 $('sideHost').textContent=location.host||'localhost';
 $('loginToken').value=localStorage.getItem(tokenStore)||'';
@@ -171,6 +198,7 @@ function out(x){$('output').textContent=typeof x==='string'?x:JSON.stringify(x,n
 function llmOut(x){$('llmOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
 function notifyOut(x){$('notifyOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
 function secretsOut(x){$('secretsOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+function intelOut(x){$('intelOutput').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
 function toast(message,type='ok'){const wrap=$('toastWrap');if(!wrap)return;const el=document.createElement('div');el.className='toast '+type;el.textContent=message;wrap.appendChild(el);setTimeout(()=>{el.style.opacity='0';el.style.transform='translateY(-6px)';el.style.transition='all .2s';setTimeout(()=>el.remove(),220)},3200)}
 function showLogin(msg='请输入 Admin Token 登录'){ $('loginView').style.display='grid'; $('appView').style.display='none'; $('logoutBtn').style.display='none'; $('loginMsg').textContent=msg; }
 function showApp(){ $('loginView').style.display='none'; $('appView').style.display='grid'; $('logoutBtn').style.display='inline-block'; }
@@ -180,15 +208,17 @@ function showTab(name){document.querySelectorAll('.tab').forEach(x=>x.classList.
 function normModelId(id){return String(id||'').trim().replace(/[‐‑‒–—―−]/g,'-')}
 function linesToModels(text){return String(text||'').split(/\r?\n|,/).map(normModelId).filter(Boolean).map((id,idx)=>({id,priority:idx+1,enabled:true}))}
 function modelsToLines(models){return (models||[]).filter(m=>m.enabled!==false).sort((a,b)=>(a.priority||1)-(b.priority||1)).map(m=>m.id).join('\n')}
-async function loadAll(){try{await loadStatus();await loadSecrets(true);await loadPrompts();await loadLlmConfig(true);await loadRuns();showApp()}catch(e){if(/unauthorized|Admin Token|Cannot read/.test(e.message))showLogin('请登录：'+e.message);else out('加载失败：'+e.message)}}
+function keyedToLines(items){return (items||[]).filter(x=>x.enabled!==false).sort((a,b)=>(a.priority||1)-(b.priority||1)).map(x=>x.value||x.url||x.handle||'').filter(Boolean).join('\n')}
+function linesToKeyed(text,prefix){return String(text||'').split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean).map((value,idx)=>({id:`${prefix}_${idx+1}`,name:value,value,enabled:true,priority:idx+1}))}
+async function loadAll(){try{await loadStatus();await loadSecrets(true);await loadPrompts();await loadLlmConfig(true);await loadIntelConfig(true);await loadRuns();showApp()}catch(e){if(/unauthorized|Admin Token|Cannot read/.test(e.message))showLogin('请登录：'+e.message);else out('加载失败：'+e.message)}}
 async function loadStatus(){
   const j=await api('/api/status');if(j.authRequired&&j.authenticated===false)throw new Error('Admin Token 不正确或未登录');const s=j.settings;currentSettings=s;
   $('mMode').innerHTML=s.publishMode==='live'?'<span class="bad">LIVE</span>':'<span class="ok">PREVIEW</span>';$('mCounter').textContent=`${j.counter.count}/${s.maxDailyPosts}`;$('mLlm').innerHTML=j.llm.configured?'<span class="ok">OK</span>':'<span class="bad">未配置</span>';$('mPublisher').innerHTML=j.publisher.configured?'<span class="ok">OK</span>':'<span class="bad">未配置</span>';
-  $('status').innerHTML=`<span class="pill ${s.publishMode==='live'?'bad':'ok'}">模式 ${s.publishMode==='live'?'LIVE 真实发布':'PREVIEW 只预览'}</span><span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.configured?'ok':'bad'}">LLM ${j.llm.configured?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span><span class="pill ${j.secrets.telegramConfigured?'ok':'warn'}">TG ${j.secrets.telegramConfigured?'OK':'未配置'}</span>`;
-  $('jobName').value=s.jobName||'';$('jobDescription').value=s.jobDescription||'';$('language').value=s.language||'';$('styleGuide').value=s.styleGuide||'';$('enabled').checked=!!s.enabled;$('publishMode').value=s.publishMode||'preview';$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider||'mock';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',');$('notifyTelegram').checked=s.notifyTelegram!==false;
+  $('status').innerHTML=`<span class="pill ${s.publishMode==='live'?'bad':'ok'}">模式 ${s.publishMode==='live'?'LIVE 真实发布':'PREVIEW 只预览'}</span><span class="pill ${j.publisher.configured?'ok':'bad'}">Publisher ${j.publisher.configured?'OK':'未配置'}</span><span class="pill ${j.llm.configured?'ok':'bad'}">LLM ${j.llm.configured?'OK':'未配置'}</span><span class="pill">今日 ${j.counter.count}/${s.maxDailyPosts}</span><span class="pill">next ${j.scheduler.nextRunAt?new Date(j.scheduler.nextRunAt).toLocaleString():'-'}</span><span class="pill ${j.secrets.telegramConfigured?'ok':'warn'}">TG ${j.secrets.telegramConfigured?'OK':'未配置'}</span><span class="pill ${j.intel?.enabled?'ok':''}">情报源 ${j.intel?.enabled?'ON':'OFF'}${j.intel?.newsCount?` · RSS ${j.intel.newsCount}`:''}${j.intel?.kolCount?` · KOL ${j.intel.kolCount}`:''}</span>`;
+  $('jobName').value=s.jobName||'';$('jobDescription').value=s.jobDescription||'';$('language').value=s.language||'';$('styleGuide').value=s.styleGuide||'';$('enabled').checked=!!s.enabled;$('publishMode').value=s.publishMode||'preview';$('intervalMinutes').value=s.intervalMinutes;$('maxDailyPosts').value=s.maxDailyPosts;$('minPostChars').value=s.minPostChars;$('maxPostChars').value=s.maxPostChars;$('llmProvider').value=s.llmProvider||'mock';$('bannedSymbols').value=(s.bannedSymbols||[]).join(',');$('leadCooldownRuns').value=s.leadCooldownRuns??3;$('leadCooldownMinutes').value=s.leadCooldownMinutes??180;$('maxConsecutiveFailures').value=s.maxConsecutiveFailures??3;$('similarityThreshold').value=s.similarityThreshold??0.72;$('bannedPhrases').value=(s.bannedPhrases||[]).join('\n');$('includeTradePlan').checked=s.includeTradePlan!==false;$('tradePlanMode').value=s.tradePlanMode||'conditional';$('preferSquareTagSymbols').checked=s.preferSquareTagSymbols!==false;$('squareTagSymbols').value=(s.squareTagSymbols||[]).join('\n');$('notifyTelegram').checked=s.notifyTelegram!==false;
 }
 async function loadSecrets(reveal=false){const j=await api('/api/secrets'+(reveal?'?reveal=1':''));const sec=j.secrets||{};if(reveal){$('binanceSquareOpenApiKey').value=sec.binanceSquareOpenApiKey||'';$('telegramBotToken').value=sec.telegramBotToken||'';$('telegramChatId').value=sec.telegramChatId||''}return sec}
-async function saveSettings(){try{const body={jobName:$('jobName').value.trim(),jobDescription:$('jobDescription').value.trim(),language:$('language').value.trim(),styleGuide:$('styleGuide').value.trim(),enabled:$('enabled').checked,publishMode:$('publishMode').value,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,bannedSymbols:$('bannedSymbols').value.split(',').map(x=>x.trim()).filter(Boolean),notifyTelegram:$('notifyTelegram').checked};const j=await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});out({ok:true,message:'任务设置已保存',settings:j.settings});toast('任务设置已保存');await loadStatus()}catch(e){out('保存失败：'+e.message);toast('任务设置保存失败：'+e.message,'bad')}}
+async function saveSettings(){try{const body={jobName:$('jobName').value.trim(),jobDescription:$('jobDescription').value.trim(),language:$('language').value.trim(),styleGuide:$('styleGuide').value.trim(),enabled:$('enabled').checked,publishMode:$('publishMode').value,intervalMinutes:+$('intervalMinutes').value,maxDailyPosts:+$('maxDailyPosts').value,minPostChars:+$('minPostChars').value,maxPostChars:+$('maxPostChars').value,llmProvider:$('llmProvider').value,bannedSymbols:$('bannedSymbols').value.split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean),leadCooldownRuns:+$('leadCooldownRuns').value,leadCooldownMinutes:+$('leadCooldownMinutes').value,maxConsecutiveFailures:+$('maxConsecutiveFailures').value,similarityThreshold:+$('similarityThreshold').value,bannedPhrases:$('bannedPhrases').value.split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean),includeTradePlan:$('includeTradePlan').checked,tradePlanMode:$('tradePlanMode').value,preferSquareTagSymbols:$('preferSquareTagSymbols').checked,squareTagSymbols:$('squareTagSymbols').value.split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean),notifyTelegram:$('notifyTelegram').checked};const j=await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});out({ok:true,message:'任务设置已保存',settings:j.settings});toast('任务设置已保存');await loadStatus()}catch(e){out('保存失败：'+e.message);toast('任务设置保存失败：'+e.message,'bad')}}
 async function savePublishKey(){try{const body={};if($('binanceSquareOpenApiKey').value.trim())body.binanceSquareOpenApiKey=$('binanceSquareOpenApiKey').value.trim();const j=await api('/api/secrets',{method:'PUT',body:JSON.stringify(body)});secretsOut({ok:true,message:'发布密钥已保存',secrets:j.secrets});toast('发布密钥已保存');await loadSecrets(true);await loadStatus()}catch(e){secretsOut('保存失败：'+e.message);toast('发布密钥保存失败：'+e.message,'bad')}}
 async function saveNotify(){try{const secretBody={};if($('telegramBotToken').value.trim())secretBody.telegramBotToken=$('telegramBotToken').value.trim();if($('telegramChatId').value.trim())secretBody.telegramChatId=$('telegramChatId').value.trim();const result={settings:await api('/api/settings',{method:'PUT',body:JSON.stringify({notifyTelegram:$('notifyTelegram').checked})})};if(Object.keys(secretBody).length)result.secrets=await api('/api/secrets',{method:'PUT',body:JSON.stringify(secretBody)});notifyOut({ok:true,message:'通知配置已保存',...result});toast('通知配置已保存');await loadSecrets(true);await loadStatus();return result}catch(e){notifyOut('保存失败：'+e.message);toast('通知配置保存失败：'+e.message,'bad');throw e}}
 async function testTelegram(){try{await saveNotify();const j=await api('/api/telegram/test',{method:'POST'});notifyOut({ok:true,message:'Telegram 测试消息已发送',telegram:j.telegram});toast('Telegram 测试消息已发送')}catch(e){notifyOut('测试失败：'+e.message);toast('Telegram 测试失败：'+e.message,'bad')}}
@@ -210,6 +240,10 @@ async function deleteLlmChannel(){try{const ch=currentChannel();if(!ch||!confirm
 function toggleLlmKey(){const el=$('llmChannelApiKey');el.type=el.type==='password'?'text':'password'}
 async function fetchChannelModels(){try{const ch=upsertCurrentChannel();llmOut('正在保存并从 /models 拉取模型列表...');await saveLlmConfig(false);const j=await api('/api/llm-config/channels/'+encodeURIComponent(ch.id)+'/models/fetch',{method:'POST'});llmConfig=j.llmConfig;selectedChannelId=ch.id;renderChannelSelect();selectLlmChannel();llmOut({ok:true,message:`已拉取 ${j.fetchedModels.length} 个模型`,fetchedCount:j.fetchedModels.length,fetchedModels:j.fetchedModels});toast(`已拉取 ${j.fetchedModels.length} 个模型`)}catch(e){llmOut('拉取失败：'+e.message);toast('模型拉取失败：'+e.message,'bad')}}
 async function testLlmChannel(){try{const ch=upsertCurrentChannel();await saveLlmConfig(false);const model=(linesToModels($('llmModels').value)[0]||{}).id;if(!model)throw new Error('请先填写至少一个模型');llmOut('正在测试 '+ch.name+' / '+model+' / '+(ch.apiMode||'auto')+' ...');const j=await api('/api/llm-config/test',{method:'POST',body:JSON.stringify({channelId:ch.id,model})});llmOut({ok:true,message:'首选模型测试成功',...j});toast('首选模型测试成功')}catch(e){llmOut('测试失败：'+e.message);toast('首选模型测试失败：'+e.message,'bad')}}
+
+async function loadIntelConfig(reveal=false){try{const j=await api('/api/intel-config'+(reveal?'?reveal=1':''));intelConfig=j.intelConfig||{};$('intelEnabled').checked=!!intelConfig.enabled;$('newsRssUrls').value=keyedToLines(intelConfig.newsRssUrls);$('kolSources').value=keyedToLines(intelConfig.kolSources);$('macroNotes').value=intelConfig.macroNotes||'';$('coinglassApiKey').value=intelConfig.coinglassApiKey||'';$('onchainApiKeys').value=intelConfig.onchainApiKeys?JSON.stringify(intelConfig.onchainApiKeys,null,2):'';$('maxNewsItems').value=intelConfig.maxNewsItems??8;$('maxKolItems').value=intelConfig.maxKolItems??8;intelOut({loaded:true,enabled:!!intelConfig.enabled,news:(intelConfig.newsRssUrls||[]).length,kol:(intelConfig.kolSources||[]).length,hasCoinglassApiKey:!!intelConfig.hasCoinglassApiKey,onchainApiKeys:intelConfig.onchainApiKeys||{},updatedAt:intelConfig.updatedAt});return intelConfig}catch(e){intelOut('加载情报源失败：'+e.message);throw e}}
+async function saveIntelConfig(){try{const raw=$('onchainApiKeys').value.trim();const body={enabled:$('intelEnabled').checked,newsRssUrls:linesToKeyed($('newsRssUrls').value,'rss'),kolSources:linesToKeyed($('kolSources').value,'kol'),macroNotes:$('macroNotes').value.trim(),maxNewsItems:+$('maxNewsItems').value,maxKolItems:+$('maxKolItems').value};if(raw)body.onchainApiKeys=JSON.parse(raw);if($('coinglassApiKey').value.trim())body.coinglassApiKey=$('coinglassApiKey').value.trim();const j=await api('/api/intel-config',{method:'PUT',body:JSON.stringify(body)});intelConfig=j.intelConfig;intelOut({ok:true,message:'情报源配置已保存，下次生成自动生效',intelConfig:j.intelConfig});toast('情报源配置已保存');await loadStatus();await loadIntelConfig(true)}catch(e){intelOut('保存失败：'+e.message);toast('情报源保存失败：'+e.message,'bad')}}
+
 async function run(mode){try{if(mode==='publish'&&currentSettings.publishMode==='live'&&!confirm('当前是 LIVE 模式，确认真实发布到 Binance Square？'))return;out(currentSettings.publishMode==='live'&&mode==='publish'?'真实发布中...':'生成预览中...');const j=await api('/api/run',{method:'POST',body:JSON.stringify({mode})});out({ok:true,message:j.run?.status==='preview'?'预览已生成':j.run?.status==='published'?'已发布':'执行完成',run:j.run});toast(j.run?.status==='error'?'执行完成但本轮失败':(j.run?.status==='published'?'发帖成功':'预览已生成'),j.run?.status==='error'?'warn':'ok');await loadAll()}catch(e){out('执行失败：'+e.message);toast('执行失败：'+e.message,'bad')}}
 async function marketPack(){try{out('获取中...');const j=await api('/api/market-pack',{method:'POST'});out({ok:true,message:'Market Pack 已获取',pack:j.pack});toast('Market Pack 已获取')}catch(e){out('获取失败：'+e.message);toast('Market Pack 获取失败：'+e.message,'bad')}}
 async function loadRuns(){const j=await api('/api/runs?limit=200');runs=j.runs||[];renderRuns();renderHeatmap()}

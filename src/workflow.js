@@ -2,7 +2,7 @@ const { buildMarketPack } = require('./marketPack');
 const { generatePost } = require('./generator');
 const { publishToBinanceSquare } = require('./publisher');
 const { sendTelegram } = require('./telegram');
-const { appendRun, getSettings, getCounter, incrementCounter, shanghaiDateString } = require('./store');
+const { appendRun, getSettings, saveSettings, getCounter, incrementCounter, listRuns } = require('./store');
 
 function hasBannedSymbol(pack, settings) {
   const banned = new Set((settings.bannedSymbols || []).map(s => String(s).toUpperCase()));
@@ -68,6 +68,16 @@ async function runOnce(mode = 'dry-run', meta = {}) {
       source: pack?.source, lead: pack?.trio?.lead?.symbol, peer: pack?.trio?.peer?.symbol, anchor: pack?.trio?.anchor?.symbol,
       postText: generated?.text, error: err.message || String(err), meta
     });
+    const failLimit = Number(settings.maxConsecutiveFailures || 0);
+    if (failLimit > 0 && mode !== 'dry-run') {
+      const recentLive = listRuns(Math.max(20, failLimit * 3)).filter(r => r.mode !== 'dry-run' && r.status !== 'preview').slice(0, failLimit);
+      if (recentLive.length >= failLimit && recentLive.every(r => r.status === 'error')) {
+        saveSettings({ enabled: false });
+        if (settings.notifyTelegram) {
+          await sendTelegram(`⚠️ Binance Square Autopost 已自动暂停\n原因：连续失败 ${failLimit} 次\n最近错误：${err.message || String(err)}`).catch(() => null);
+        }
+      }
+    }
     if (settings.notifyTelegram && mode !== 'dry-run') {
       await sendTelegram(`❌ 币安广场发帖失败\n原因：${err.message || String(err)}`).catch(() => null);
     }
