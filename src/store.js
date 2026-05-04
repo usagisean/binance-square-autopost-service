@@ -133,12 +133,16 @@ function saveSecrets(patch = {}) {
 }
 
 
+function normalizeModelId(value = '') {
+  return String(value || '').trim().replace(/[‐‑‒–—―−]/g, '-');
+}
+
 function normalizeModelList(models = []) {
   const seen = new Set();
   return (Array.isArray(models) ? models : String(models || '').split(/\r?\n|,/))
     .map((m, idx) => typeof m === 'string' ? { id: m, priority: idx + 1, enabled: true } : m)
     .map((m, idx) => ({
-      id: String(m?.id || m?.name || '').trim(),
+      id: normalizeModelId(m?.id || m?.name || ''),
       priority: Math.max(1, Number(m?.priority || idx + 1)),
       enabled: m?.enabled !== false
     }))
@@ -157,6 +161,7 @@ function defaultLlmConfig() {
       apiKey: secrets.openaiApiKey || config.openaiApiKey || '',
       enabled: true,
       priority: 1,
+      reasoning: false,
       temperature: config.openaiTemperature,
       maxTokens: config.openaiMaxTokens,
       timeoutMs: config.openaiTimeoutMs,
@@ -182,6 +187,7 @@ function normalizeLlmConfig(raw = {}) {
       apiKey: String(ch.apiKey || '').trim(),
       enabled: ch.enabled !== false,
       priority: Math.max(1, Number(ch.priority || idx + 1)),
+      reasoning: ch.reasoning === true,
       temperature: Math.max(0, Math.min(2, Number(ch.temperature ?? config.openaiTemperature))),
       maxTokens: Math.max(1, Number(ch.maxTokens || config.openaiMaxTokens)),
       timeoutMs: Math.max(5000, Number(ch.timeoutMs || config.openaiTimeoutMs)),
@@ -254,6 +260,7 @@ function getLlmCandidates() {
         temperature: channel.temperature,
         maxTokens: channel.maxTokens,
         timeoutMs: channel.timeoutMs,
+        reasoning: channel.reasoning === true,
         channelPriority: channel.priority,
         modelPriority: model.priority
       });
@@ -366,6 +373,7 @@ module.exports = {
   saveLlmConfig,
   setLlmChannelModels,
   getLlmCandidates,
+  normalizeModelId,
   listPrompts,
   getActivePrompt,
   createPrompt,

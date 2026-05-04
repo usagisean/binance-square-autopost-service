@@ -187,7 +187,8 @@ async function handleApi(req, res, url) {
         model: modelId,
         temperature: channel.temperature,
         maxTokens: Number(channel.maxTokens || 512),
-        timeoutMs: channel.timeoutMs
+        timeoutMs: channel.timeoutMs,
+        reasoning: channel.reasoning === true
       };
       try {
         const text = await callOpenAIWithCandidate('请只回复“连接正常”四个字。', candidate);

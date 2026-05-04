@@ -78,8 +78,9 @@ function extractChoiceText(json) {
   return '';
 }
 
-function isReasoningLikeModel(model = '') {
-  return /(^|[/:_-])(gpt-5|o1|o3|o4|gpt-oss)/i.test(String(model || ''));
+function isReasoningLikeModel(candidateOrModel = '') {
+  if (typeof candidateOrModel === 'object' && candidateOrModel) return candidateOrModel.reasoning === true;
+  return false;
 }
 
 function effectiveMaxTokens(candidate = {}) {
@@ -87,7 +88,7 @@ function effectiveMaxTokens(candidate = {}) {
   const base = Number.isFinite(requested) && requested > 0 ? requested : Number(config.openaiMaxTokens || 180);
   // GPT-5 / o-series compatible relays may spend part of max_tokens on hidden reasoning.
   // Keep visible output short via post validation, but avoid content=null caused by too-small budgets.
-  if (isReasoningLikeModel(candidate.model)) return Math.max(base, 800);
+  if (isReasoningLikeModel(candidate)) return Math.max(base, 800);
   return base;
 }
 
@@ -96,7 +97,7 @@ async function callOpenAIWithCandidate(prompt, candidate) {
   const baseUrl = String(candidate.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const chatUrl = `${baseUrl}/chat/completions`;
   const responsesUrl = `${baseUrl}/responses`;
-  const reasoningLike = isReasoningLikeModel(candidate.model);
+  const reasoningLike = isReasoningLikeModel(candidate);
   const timeoutMs = Number(candidate.timeoutMs || config.openaiTimeoutMs || 45000);
   const headers = { Authorization: `Bearer ${candidate.apiKey}` };
   const maybeTemperature = () => {
