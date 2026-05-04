@@ -1,4 +1,4 @@
-const { postJson } = require('./httpClient');
+const { postJson, request } = require('./httpClient');
 const { config } = require('./config');
 const { getSettings, getActivePrompt, getSecrets, getLlmCandidates } = require('./store');
 
@@ -115,6 +115,56 @@ function shortJson(json, max = 240) {
   try { return JSON.stringify(json).slice(0, max); } catch { return String(json).slice(0, max); }
 }
 
+function extractSseText(body = '') {
+  let text = '';
+  const lines = String(body || '').split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line.startsWith('data:')) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+    let json;
+    try { json = JSON.parse(data); } catch { continue; }
+
+    if (typeof json.delta === 'string') text += json.delta;
+    if (typeof json.output_text === 'string') text += json.output_text;
+    if (typeof json.response?.output_text === 'string') text += json.response.output_text;
+
+    if (Array.isArray(json.choices)) {
+      for (const choice of json.choices) {
+        text += textFromContent(choice?.delta?.content);
+        text += textFromContent(choice?.message?.content);
+        text += textFromContent(choice?.text);
+      }
+    }
+    if (Array.isArray(json.output)) {
+      for (const item of json.output) {
+        text += textFromContent(item?.content);
+        text += textFromContent(item?.text);
+        text += textFromContent(item?.output_text);
+      }
+    }
+  }
+  return text;
+}
+
+async function postJsonSse(url, payload, { headers = {}, timeoutMs = 45000 } = {}) {
+  const res = await request('POST', url, {
+    headers: {
+      'User-Agent': 'binance-square-autopost-service/0.1',
+      Accept: 'text/event-stream, application/json',
+      'Content-Type': 'application/json',
+      ...headers
+    },
+    body: JSON.stringify(payload),
+    timeoutMs
+  });
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    throw new Error(`http_${res.statusCode}:${String(res.body || '').slice(0, 300)}`);
+  }
+  return res.body;
+}
+
 async function callOpenAIWithCandidate(prompt, candidate) {
   if (!candidate?.apiKey) throw new Error('missing_openai_api_key');
   const baseUrl = String(candidate.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -154,6 +204,29 @@ async function callOpenAIWithCandidate(prompt, candidate) {
     }
     return { label: `chat/completions:${tokenParam}:${maxTokens || 'none'}`, json, text: compactText(extractChoiceText(json)) };
   };
+  const runChatStream = async (maxTokens, tokenParam = reasoningLike ? 'max_completion_tokens' : 'max_tokens') => {
+    const payload = {
+      model,
+      ...maybeTemperature(),
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [
+        { role: 'system', content: systemText },
+        { role: 'user', content: prompt }
+      ]
+    };
+    if (Number.isFinite(maxTokens) && maxTokens > 0) payload[tokenParam] = maxTokens;
+    let body;
+    try {
+      body = await postJsonSse(chatUrl, payload, { headers, timeoutMs });
+    } catch (err) {
+      if (tokenParam === 'max_completion_tokens' && /http_400|unsupported|unknown|max_completion_tokens/i.test(err.message || '')) {
+        return runChatStream(maxTokens, 'max_tokens');
+      }
+      throw err;
+    }
+    return { label: `chat/completions:stream:${tokenParam}:${maxTokens || 'none'}`, json: { stream: true, sample: String(body || '').slice(0, 240) }, text: compactText(extractSseText(body)) };
+  };
   const runCompletions = async (maxTokens) => {
     const payload = {
       model,
@@ -176,31 +249,59 @@ async function callOpenAIWithCandidate(prompt, candidate) {
     return { label: `responses:max_output_tokens:${maxTokens || 'none'}`, json, text: compactText(extractChoiceText(json)) };
   };
 
+  const runResponsesStream = async (maxTokens) => {
+    const payload = {
+      model,
+      instructions: systemText,
+      input: prompt,
+      stream: true,
+      ...maybeTemperature()
+    };
+    if (Number.isFinite(maxTokens) && maxTokens > 0) payload.max_output_tokens = maxTokens;
+    const body = await postJsonSse(responsesUrl, payload, { headers, timeoutMs });
+    return { label: `responses:stream:max_output_tokens:${maxTokens || 'none'}`, json: { stream: true, sample: String(body || '').slice(0, 240) }, text: compactText(extractSseText(body)) };
+  };
+
   const firstMaxTokens = effectiveMaxTokens(candidate);
   let attempts = [];
   if (apiMode === 'chat') {
     attempts = reasoningLike
-      ? [() => runChat(firstMaxTokens, 'max_completion_tokens'), () => runChat(Math.max(firstMaxTokens, 1200), 'max_tokens')]
-      : [() => runChat(firstMaxTokens, 'max_tokens')];
+      ? [
+          () => runChat(firstMaxTokens, 'max_completion_tokens'),
+          () => runChatStream(firstMaxTokens, 'max_completion_tokens'),
+          () => runChat(Math.max(firstMaxTokens, 1200), 'max_tokens'),
+          () => runChatStream(Math.max(firstMaxTokens, 1200), 'max_tokens')
+        ]
+      : [
+          () => runChat(firstMaxTokens, 'max_tokens'),
+          () => runChatStream(firstMaxTokens, 'max_tokens')
+        ];
   } else if (apiMode === 'completions') {
     attempts = [() => runCompletions(firstMaxTokens)];
   } else if (apiMode === 'responses') {
-    attempts = [() => runResponses(firstMaxTokens)];
+    attempts = [() => runResponses(firstMaxTokens), () => runResponsesStream(firstMaxTokens)];
   } else if (reasoningLike) {
     attempts = [
       () => runChat(firstMaxTokens, 'max_completion_tokens'),
+      () => runChatStream(firstMaxTokens, 'max_completion_tokens'),
       () => runChat(Math.max(firstMaxTokens, 1200), 'max_tokens'),
+      () => runChatStream(Math.max(firstMaxTokens, 1200), 'max_tokens'),
       () => runResponses(Math.max(firstMaxTokens, 1200)),
+      () => runResponsesStream(Math.max(firstMaxTokens, 1200)),
       () => runCompletions(Math.max(firstMaxTokens, 1200)),
       () => runChat(4096, 'max_tokens'),
+      () => runChatStream(4096, 'max_tokens'),
       () => runResponses(4096),
+      () => runResponsesStream(4096),
       () => runCompletions(4096)
     ];
   } else {
     attempts = [
       () => runChat(firstMaxTokens, 'max_tokens'),
+      () => runChatStream(firstMaxTokens, 'max_tokens'),
       () => runCompletions(firstMaxTokens),
-      () => runResponses(firstMaxTokens)
+      () => runResponses(firstMaxTokens),
+      () => runResponsesStream(firstMaxTokens)
     ];
   }
 

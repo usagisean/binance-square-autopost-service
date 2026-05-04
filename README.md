@@ -72,12 +72,12 @@ TELEGRAM_CHAT_ID=...
 
 ### OpenAI-compatible / 中转站配置
 
-服务默认使用后台里的“API 模式”。`auto` 会按顺序尝试：
+服务默认使用后台里的“API 模式”。`auto` 会按顺序尝试；其中 `chat/completions` 和 `responses` 会在非流式空正文时自动 fallback 到流式 SSE 解析：
 
 ```text
-POST {OPENAI_BASE_URL}/chat/completions
+POST {OPENAI_BASE_URL}/chat/completions        # non-stream + stream fallback
 POST {OPENAI_BASE_URL}/completions
-POST {OPENAI_BASE_URL}/responses
+POST {OPENAI_BASE_URL}/responses               # non-stream + stream fallback
 Authorization: Bearer {OPENAI_API_KEY}
 ```
 
