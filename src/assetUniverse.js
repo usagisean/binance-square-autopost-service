@@ -1,0 +1,84 @@
+function unique(items = []) {
+  return [...new Set(items.map(s => String(s || '').trim().toUpperCase()).filter(Boolean))];
+}
+
+const ASSET_UNIVERSE = {
+  crypto_core: unique(['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'PEPE', 'WIF', 'BONK', 'PENGU', 'BABY', 'SUI', 'ENA', 'LINK', 'AAVE', 'AVAX', 'ADA', 'ZEC', 'BOB']),
+  crypto_ai: unique(['NEAR', 'ICP', 'RENDER', 'FET', 'TAO', 'ARKM', 'WLD', 'VIRTUAL', 'AI', 'COOKIE', 'GRASS', 'IO', 'ATH', 'NMR']),
+  stock_ai: unique(['NVDA', 'AMD', 'AVGO', 'TSM', 'ARM', 'MU', 'SMCI', 'PLTR', 'MSFT', 'GOOGL', 'META', 'AMZN', 'TSLA', 'CRWV', 'ORCL', 'VRT']),
+  stock_crypto_beta: unique(['COIN', 'MSTR', 'HOOD']),
+  etf_macro: unique(['QQQ', 'SOXX', 'SPY'])
+};
+
+const LEGACY_CONTRACT_META = {
+  BTC: { name: 'Bitcoin', bucket: 'anchor' }, ETH: { name: 'Ethereum', bucket: 'anchor' },
+  SOL: { name: 'Solana', bucket: 'major-beta' }, BNB: { name: 'BNB', bucket: 'major-beta' }, XRP: { name: 'XRP', bucket: 'major-beta' },
+  DOGE: { name: 'Dogecoin', bucket: 'meme' }, PEPE: { name: 'PEPE', bucket: 'meme' }, WIF: { name: 'dogwifhat', bucket: 'meme' },
+  BONK: { name: 'Bonk', bucket: 'meme' }, BOME: { name: 'BOOK OF MEME', bucket: 'meme' }, FLOKI: { name: 'FLOKI', bucket: 'meme' },
+  POPCAT: { name: 'Popcat', bucket: 'meme' }, PENGU: { name: 'Pudgy Penguins', bucket: 'meme' }, FARTCOIN: { name: 'Fartcoin', bucket: 'meme' },
+  AAVE: { name: 'AAVE', bucket: 'defi' }, LINK: { name: 'Chainlink', bucket: 'infra' }, ARB: { name: 'Arbitrum', bucket: 'beta' },
+  ENA: { name: 'Ethena', bucket: 'beta' }, FET: { name: 'Artificial Superintelligence Alliance', bucket: 'ai' }, SUI: { name: 'Sui', bucket: 'beta' },
+  AVAX: { name: 'Avalanche', bucket: 'beta' }, ADA: { name: 'Cardano', bucket: 'beta' }, ZEC: { name: 'Zcash', bucket: 'beta' }, POL: { name: 'POL', bucket: 'beta' },
+  ALPACA: { name: 'Alpaca Finance', bucket: 'bnb-beta' }, ALPHA: { name: 'Alpha Finance', bucket: 'bnb-beta' }, BAKE: { name: 'BakerySwap', bucket: 'bnb-beta' },
+  BSW: { name: 'Biswap', bucket: 'bnb-beta' }, MBOX: { name: 'Mobox', bucket: 'bnb-beta' }, LOKA: { name: 'League of Kingdoms', bucket: 'beta' },
+  RAVE: { name: 'RAVE', bucket: 'contract-meme' }, CHIP: { name: 'CHIP', bucket: 'contract-meme' }, BSB: { name: 'BSB', bucket: 'contract-meme' }
+};
+
+const EXTRA_CONTRACT_META = {
+  BABY: { name: 'Baby', bucket: 'meme' }, BOB: { name: 'BOB', bucket: 'beta' },
+  NEAR: { name: 'NEAR Protocol', bucket: 'ai' }, ICP: { name: 'Internet Computer', bucket: 'ai' }, RENDER: { name: 'Render', bucket: 'ai' },
+  TAO: { name: 'Bittensor', bucket: 'ai' }, ARKM: { name: 'Arkham', bucket: 'ai' }, WLD: { name: 'Worldcoin', bucket: 'ai' },
+  VIRTUAL: { name: 'Virtuals Protocol', bucket: 'ai' }, AI: { name: 'Sleepless AI', bucket: 'ai' }, COOKIE: { name: 'Cookie DAO', bucket: 'ai' },
+  GRASS: { name: 'Grass', bucket: 'ai' }, IO: { name: 'io.net', bucket: 'ai' }, ATH: { name: 'Aethir', bucket: 'ai' }, NMR: { name: 'Numeraire', bucket: 'ai' }
+};
+
+const CONTRACT_META = { ...LEGACY_CONTRACT_META, ...EXTRA_CONTRACT_META };
+
+const LEGACY_PRIORITY_SYMBOLS = unique([
+  'CHIP', 'RAVE', 'BSB', 'ALPACA', 'ALPHA', 'BAKE', 'BSW', 'MBOX', 'LOKA',
+  'DOGE', 'PEPE', 'WIF', 'BONK', 'BOME', 'FLOKI', 'POPCAT', 'PENGU', 'FARTCOIN',
+  'ENA', 'FET', 'SUI', 'ARB', 'AAVE', 'LINK', 'AVAX', 'SOL', 'BNB', 'XRP', 'ZEC'
+]);
+
+const PRIORITY_SYMBOLS = unique([
+  ...ASSET_UNIVERSE.crypto_ai,
+  ...ASSET_UNIVERSE.crypto_core,
+  ...LEGACY_PRIORITY_SYMBOLS
+]);
+
+const EXCLUDED_BASES = new Set(['USDC', 'FDUSD', 'TUSD', 'BUSD', 'USDP', 'EUR', 'GBP', 'TRY', 'UAH', 'RUB', 'AUD', 'BRL']);
+
+const MEME_SYMBOL_PATTERN = /DOGE|PEPE|WIF|BONK|BOME|FLOKI|POPCAT|PENGU|FART|SHIB|MEME|CHILL|MOODENG|MOG|NEIRO|ACT|TST|TURBO|BRETT|MEW|RAVE|CHIP|BSB|BABY/i;
+
+const DEFAULT_SQUARE_TAG_SYMBOLS = unique([
+  ...ASSET_UNIVERSE.crypto_core,
+  ...ASSET_UNIVERSE.crypto_ai,
+  'BOME', 'FLOKI', 'POPCAT', 'FARTCOIN', 'ARB', 'POL'
+]);
+
+const DEFAULT_BANNED_PHRASES = unique([
+  '主动腿', '拧巴', '玄学', '抽象', '离谱', '绷不住', '上头', '杀疯了', '起飞', '爆拉', '闭眼', '梭哈', '铁子', '兄弟们',
+  '稳赚', '必涨', '无脑冲', '闭眼买', '稳了', '主线', '风险锚', '对照腿', '情绪锚', '带节奏的是', '盘面最有张力',
+  '我的计划很简单', '先看分化', '继续观察', '等确认', '宏观层面', '叙事驱动', '资金共振', '多维度分析', '综合来看', '值得重点关注'
+]);
+
+function cashtagList(symbols = []) {
+  return unique(symbols).map(s => `$${s}`).join(' ');
+}
+
+function allTrackedCryptoSymbols() {
+  return unique([...ASSET_UNIVERSE.crypto_core, ...ASSET_UNIVERSE.crypto_ai, ...LEGACY_PRIORITY_SYMBOLS]);
+}
+
+module.exports = {
+  ASSET_UNIVERSE,
+  CONTRACT_META,
+  PRIORITY_SYMBOLS,
+  EXCLUDED_BASES,
+  MEME_SYMBOL_PATTERN,
+  DEFAULT_SQUARE_TAG_SYMBOLS,
+  DEFAULT_BANNED_PHRASES,
+  cashtagList,
+  allTrackedCryptoSymbols,
+  unique
+};

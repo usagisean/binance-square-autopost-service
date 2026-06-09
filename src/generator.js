@@ -1,24 +1,54 @@
 const { postJson, request } = require('./httpClient');
 const { config } = require('./config');
 const { getSettings, getActivePrompt, getSecrets, getLlmCandidates, listRuns } = require('./store');
+const { ASSET_UNIVERSE, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 
 function cashtag(symbol) { return `$${String(symbol || '').replace(/^\$/, '').toUpperCase()}`; }
 function compactText(text) {
   return String(text || '').replace(/^```[a-z]*\s*/i, '').replace(/```$/i, '').replace(/[“”]/g, '').trim();
 }
+function numeric(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function seededPick(items, seed = '') {
+  if (!items.length) return null;
+  let h = 0;
+  for (const ch of String(seed || Date.now())) h = ((h << 5) - h + ch.charCodeAt(0)) | 0;
+  return items[Math.abs(h) % items.length];
+}
+function selectPostAngle(pack = {}) {
+  const lead = pack.trio?.lead || {};
+  const peer = pack.trio?.peer || {};
+  const anchor = pack.trio?.anchor || {};
+  const seed = `${pack.generatedAt || ''}:${lead.symbol || ''}:${peer.symbol || ''}:${anchor.symbol || ''}`;
+  const lead1h = numeric(lead.change1h);
+  const lead24h = numeric(lead.change24h);
+  const anchor1h = numeric(anchor.change1h);
+  const anchor24h = numeric(anchor.change24h);
+  const aiSymbols = new Set(ASSET_UNIVERSE.crypto_ai);
+  const stockAiStrongCryptoLag = /美股\s*AI.*(强|热).*币圈.*(弱|没跟|承接弱)|外部情绪.*承接没打开/.test(`${pack.stockTakeaways || ''} ${pack.aiTakeaways || ''}`);
+  const options = [];
+  if (stockAiStrongCryptoLag) options.push({ id: 'ai_stock_leads_crypto_lags', instruction: '如果写到 AI，只写美股 AI 热但币圈 AI 承接没打开；不要把正文写成美股复盘。' });
+  if (aiSymbols.has(String(lead.symbol || '').toUpperCase()) && !/不足|缺失/.test(String(pack.aiTakeaways || ''))) options.push({ id: 'crypto_ai_confirmed', instruction: '主角是 AI 币时，只写它在 AI 币池内的强弱；美股/ETF只作情绪参照，缺数据就不要提。' });
+  if (lead1h > 1.2 && (anchor1h < -0.1 || anchor24h < 0)) options.push({ id: 'btc_not_confirming', instruction: '主流币没配合，小币单独冲；第一句直接提示追高容错低，再写触发位或放弃条件。' });
+  if (lead24h > 18 || Math.abs(lead1h) > 3) options.push({ id: 'chase_risk', instruction: '重点写追高风险：涨幅或波动已经很大，只给一个关键触发位和一个失效位，不要平均复盘。' });
+  if (lead1h > 0.6 && lead24h > 0) options.push({ id: 'pullback_test', instruction: '重点写回踩承接：方向可以偏多，但不要喊买，只说站稳或回踩后的条件。' });
+  if (['meme', 'contract-meme'].includes(lead.bucket) && lead1h < 0) options.push({ id: 'meme_heat_cooling', instruction: 'meme 情绪有降温迹象时，写不追或少碰；用 BTC/ETH 说明外部环境是否给空间。' });
+  if (lead1h > 1 && numeric(peer.change1h) < 0) options.push({ id: 'beta_rotation', instruction: '写资金在高 beta 里切换，只围绕主角，不要把 peer 和 anchor 写成同等主角。' });
+  const fallback = [
+    { id: 'single_coin_decision', instruction: '只围绕一个主角写清楚：偏多、偏空或不碰；另外两个币只做一句参照。' },
+    { id: 'no_trade_filter', instruction: '如果数据矛盾，第一句直接说这单不碰，再解释是盘口、承接还是主流币没配合。' },
+    { id: 'level_trigger', instruction: '只给一个交易触发点和一个失效点；价位写成人能读懂的关键区，不要像程序计算结果。' }
+  ];
+  return seededPick(options.length ? options : fallback, seed);
+}
 function renderTemplate(template, pack, settings = getSettings()) {
   const lead = pack.trio.lead.symbol;
   const peer = pack.trio.peer.symbol;
   const anchor = pack.trio.anchor.symbol;
-  const voiceAngles = [
-    '先看谁在带节奏，再看谁只是被情绪带着跑。',
-    '从合约拥挤度和盘口承接切入，别写成涨跌榜复读。',
-    '用交易员盘中复盘口吻，重点写强弱差、触发点和失效位。',
-    '从情绪是否过热切入，语气克制但要有判断。',
-    '用一句盘感开场，然后用数据把带节奏的币、跟随币、风险锚串起来。',
-    '避免固定开头，像刚盯完盘顺手发的一段观察。'
-  ];
-  const voiceAngle = voiceAngles[Math.floor(Math.random() * voiceAngles.length)];
+  const postAngle = selectPostAngle(pack);
+  const voiceAngle = postAngle?.instruction || '只围绕一个主角给出清晰判断，其他币只做参照。';
   const vars = {
     JOB_NAME: settings.jobName || '',
     JOB_DESCRIPTION: settings.jobDescription || '',
@@ -27,6 +57,7 @@ function renderTemplate(template, pack, settings = getSettings()) {
     CONTENT_SOURCE: settings.contentSource || '',
     POST_TARGET: settings.postTarget || '',
     VOICE_ANGLE: voiceAngle,
+    POST_ANGLE: postAngle?.id || '',
     MIN_POST_CHARS: String(settings.minPostChars || 180),
     MAX_POST_CHARS: String(settings.maxPostChars || 360),
     LEAD: lead,
@@ -40,6 +71,13 @@ function renderTemplate(template, pack, settings = getSettings()) {
     TRADE_PLAN: pack.tradePlan?.summary || '',
     TRADE_PLAN_JSON: pack.tradePlan ? JSON.stringify(pack.tradePlan, null, 2) : '',
     EXTERNAL_INTEL_JSON: pack.externalIntel ? JSON.stringify(pack.externalIntel, null, 2) : '',
+    STOCK_CASHTAGS: pack.stockCashtags || '',
+    MACRO_CASHTAGS: pack.macroCashtags || '',
+    AI_SECTOR_CASHTAGS: pack.aiSectorCashtags || '',
+    STOCK_FACTS: pack.stockFacts || '暂无可用美股/ETF行情数据。',
+    AI_SECTOR_FACTS: pack.aiSectorFacts || '暂无可用AI板块行情数据。',
+    STOCK_TAKEAWAYS: pack.stockTakeaways || '美股参照数据缺失，本轮不使用美股作为判断依据。',
+    AI_TAKEAWAYS: pack.aiTakeaways || 'AI板块数据不足，本轮不强行写AI联动。',
     BANNED_PHRASES: (settings.bannedPhrases || []).join('、'),
     MARKET_PACK_JSON: JSON.stringify(pack, null, 2)
   };
@@ -52,8 +90,8 @@ function mockGenerate(pack) {
   const leadStronger = Number(lead.change1h || 0) >= Number(peer.change1h || 0);
   const plan = pack.tradePlan?.summary || `${lead.symbol} 条件计划：先观望；等突破前高或跌破近端支撑后再跟，失效位看区间另一侧。`;
   const f = (pack.facts || []).slice(0, 4).join('；');
-  if (leadStronger) return `${l} 这轮更像在带节奏，${p} 只是跟着放波动，${a} 还在给风险偏好定锚。${f}。我不想在高波动里硬追，接下来只看两个点：换手能不能继续放大，以及回踩有没有承接。${plan}`;
-  return `${l} 把波动打出来了，但短线强度不如 ${p}，${a} 仍是风险偏好的锚。${f}。这种盘我不会只看涨跌幅，先看盘口承接和相对强弱，谁先站回节奏谁才有交易价值。${plan}`;
+  if (leadStronger) return `${l} 这单我只围绕主角看，不平均复盘。${p} 和 ${a} 只做参照：${f}。高波动里不硬追，只有回踩还有承接，或者重新站上关键位，我才会考虑。${plan}`;
+  return `${l} 波动有了，但短线不如 ${p}，${a} 也没给太多空间。${f}。这种盘先过滤追单，若关键位站不回去，就算有热度我也会放弃。${plan}`;
 }
 
 async function callOpenAI(prompt, settings) {
@@ -365,7 +403,7 @@ function validatePostText(text, pack, settings = getSettings()) {
   const len = [...clean].length;
   if (len < Number(settings.minPostChars || 180)) errors.push(`too_short:${len}`);
   if (len > Number(settings.maxPostChars || 360)) errors.push(`too_long:${len}`);
-  const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '主动腿'];
+  const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '需注意风险', '暂无可用美股/ETF行情数据', '美股参照数据缺失', '本轮不使用美股作为判断依据', '暂无可用AI板块行情数据', 'AI板块数据不足', ...DEFAULT_BANNED_PHRASES];
   const banned = [...new Set([...fixedBanned, ...(settings.bannedPhrases || [])].map(s => String(s || '').trim()).filter(Boolean))];
   for (const phrase of banned) {
     if (clean.includes(phrase)) errors.push(`banned_phrase:${phrase}`);
@@ -399,11 +437,12 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 硬性要求：
 1. 字数必须在 ${min} 到 ${max} 个中文字符之间，不能超过 ${max}。
 2. 必须保留并自然提到这 3 个 Cashtag：${tags}。
-3. 必须写出谁更强、谁跟随、谁是风险锚/情绪锚、接下来盯什么。
-4. 只能使用 facts / takeaways 里的真实数据，禁止编造。
-5. 如果 facts 里有条件计划，必须自然写出方向、触发点、失效/止损。
+3. 正文只围绕一个主角给判断；另外两个币只做参照，不能平均写成行情总结。
+4. 只能使用 facts / takeaways / trade plan / market pack 里的真实数据，禁止编造。
+5. 如果 facts 里有条件计划，必须自然写出方向、触发点、失效/止损；如果信号矛盾，可以直接写不碰。
 6. 不要标题、不要项目符号、不要免责声明、不要报告腔。
-7. 禁止出现这些表达：主动腿、${(settings.bannedPhrases || []).join('、')}。
+7. 如果美股/ETF或AI板块参照缺失，正文不要写“暂无数据/数据缺失/本轮不使用”，直接忽略缺失部分。
+8. 禁止出现这些表达：${[...new Set([...DEFAULT_BANNED_PHRASES, ...(settings.bannedPhrases || [])])].join('、')}。
 
 原文：
 ${text}
@@ -415,7 +454,15 @@ ${(pack.facts || []).join('\n')}
 ${(pack.takeaways || []).join('\n')}
 
 条件计划：
-${pack.tradePlan?.summary || ''}`;
+${pack.tradePlan?.summary || ''}
+
+美股/ETF参照：
+${pack.stockFacts || '暂无可用美股/ETF行情数据。'}
+${pack.stockTakeaways || '美股参照数据缺失，本轮不使用美股作为判断依据。'}
+
+AI板块参照：
+${pack.aiSectorFacts || '暂无可用AI板块行情数据。'}
+${pack.aiTakeaways || 'AI板块数据不足，本轮不强行写AI联动。'}`;
 }
 
 async function repairPostText(text, validation, pack, settings, candidate) {
@@ -515,4 +562,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle };

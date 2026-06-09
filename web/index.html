@@ -87,7 +87,7 @@
       <h2>Prompt 编辑</h2>
       <div class="row"><select id="promptSelect" onchange="selectPrompt()"></select><button class="secondary" onclick="newPrompt()">新建</button><button onclick="savePrompt()">保存 Prompt</button><button class="secondary" onclick="activatePrompt()">设为启用</button></div>
       <label>名称</label><input id="promptName">
-      <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}, {{VOICE_ANGLE}}, {{MIN_POST_CHARS}}, {{MAX_POST_CHARS}}, {{TRADE_PLAN}}, {{TRADE_PLAN_JSON}}, {{EXTERNAL_INTEL_JSON}}, {{BANNED_PHRASES}}）</label>
+      <label>内容（可用变量：{{JOB_NAME}}, {{JOB_DESCRIPTION}}, {{LANGUAGE}}, {{STYLE_GUIDE}}, {{LEAD}}, {{PEER}}, {{ANCHOR}}, {{LEAD_CASHTAG}}, {{PEER_CASHTAG}}, {{ANCHOR_CASHTAG}}, {{FACTS}}, {{TAKEAWAYS}}, {{MARKET_PACK_JSON}}, {{VOICE_ANGLE}}, {{POST_ANGLE}}, {{MIN_POST_CHARS}}, {{MAX_POST_CHARS}}, {{TRADE_PLAN}}, {{TRADE_PLAN_JSON}}, {{EXTERNAL_INTEL_JSON}}, {{STOCK_CASHTAGS}}, {{MACRO_CASHTAGS}}, {{AI_SECTOR_CASHTAGS}}, {{STOCK_FACTS}}, {{AI_SECTOR_FACTS}}, {{STOCK_TAKEAWAYS}}, {{AI_TAKEAWAYS}}, {{BANNED_PHRASES}}）</label>
       <textarea id="promptContent"></textarea>
     </section>
   </section>
@@ -169,7 +169,7 @@
       <label>禁用币种（逗号分隔）</label><input id="bannedSymbols">
       <h3>自动发布安全阀</h3>
       <div class="grid4"><div><label>Lead 冷却次数</label><input id="leadCooldownRuns" type="number" min="0"></div><div><label>Lead 冷却分钟</label><input id="leadCooldownMinutes" type="number" min="0"></div><div><label>连续失败自动暂停</label><input id="maxConsecutiveFailures" type="number" min="0"></div><div><label>相似度阈值</label><input id="similarityThreshold" type="number" min="0" max="1" step="0.01"></div></div>
-      <label>禁用词 / 禁止表达（每行一个）</label><textarea id="bannedPhrases" class="small-textarea" placeholder="拧巴&#10;主动腿&#10;起飞"></textarea>
+      <label>禁用词 / 禁止表达（每行一个）</label><textarea id="bannedPhrases" class="small-textarea" placeholder="拧巴&#10;模板腔&#10;起飞"></textarea>
       <h3>交易计划与标签</h3>
       <label><input type="checkbox" id="includeTradePlan">正文加入条件式交易计划（方向 / 触发 / 失效或止损）</label>
       <label>交易计划模式</label><select id="tradePlanMode"><option value="conditional">conditional：条件式，不强喊单</option><option value="levels">levels：更偏价位计划</option><option value="off">off：不写交易计划</option></select>

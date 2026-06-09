@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { DATA_DIR, ROOT, config } = require('./config');
+const { DEFAULT_SQUARE_TAG_SYMBOLS, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 
 const paths = {
   settings: path.join(DATA_DIR, 'settings.json'),
@@ -38,11 +39,11 @@ const defaultSettings = {
   leadCooldownMinutes: 180,
   maxConsecutiveFailures: 3,
   similarityThreshold: 0.72,
-  bannedPhrases: ['主动腿', '拧巴', '玄学', '抽象', '离谱', '绷不住', '上头', '杀疯了', '起飞', '爆拉', '闭眼', '梭哈', '铁子', '兄弟们'],
+  bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
   tradePlanMode: 'conditional',
   preferSquareTagSymbols: true,
-  squareTagSymbols: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'PEPE', 'WIF', 'BONK', 'PENGU', 'BABY', 'SUI', 'ENA', 'LINK', 'AAVE', 'AVAX', 'ADA', 'ZEC'],
+  squareTagSymbols: DEFAULT_SQUARE_TAG_SYMBOLS,
   llmProvider: config.llmProvider,
   openaiBaseUrl: config.openaiBaseUrl,
   openaiModel: config.openaiModel,
