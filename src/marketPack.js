@@ -82,7 +82,7 @@ function rankScore(asset, anchors, recentBias, settings = {}) {
   const relEth = Number(asset.change1h || 0) - Number(anchors.ETH?.change1h || 0);
   const rel = Math.max(Math.abs(relBtc), Math.abs(relEth));
   const amplitude = Number(asset.amplitude24h || 0);
-  const bucketBonus = asset.bucket === 'contract-meme' ? 4.5 : asset.bucket === 'bnb-beta' ? 3.5 : asset.bucket === 'meme' ? 2.5 : asset.bucket === 'contract-beta' ? 2.0 : asset.bucket === 'anchor' ? -8 : 0.8;
+  const bucketBonus = asset.bucket === 'contract-meme' ? 4.5 : asset.bucket === 'bnb-beta' ? 3.5 : asset.bucket === 'meme' ? 2.5 : asset.bucket === 'contract-beta' ? 2.0 : asset.bucket === 'high-vol' ? 4.0 : asset.bucket === 'anchor' ? -8 : 0.8;
   const squareTagSet = new Set((settings.squareTagSymbols || []).map(s => String(s).toUpperCase()));
   const squareTagBonus = settings.preferSquareTagSymbols !== false && squareTagSet.has(asset.symbol) ? 6 : 0;
   const cooldownPenalty = recentBias.cooldownSymbols?.has(asset.symbol) ? 1000 : 0;
@@ -172,7 +172,7 @@ function chooseTrio(rows, oneHourMap, fourHourMap, recentBias, source, isFutures
   const taggedLead = scored.slice(0, 15).find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && a.squareTagPreferred && !recentBias.cooldownSymbols?.has(a.symbol));
   const lead = (preferTagged ? taggedLead : null) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && !recentBias.cooldownSymbols?.has(a.symbol)) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && a.symbol !== recentBias.last1) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && !recentBias.last2.includes(a.symbol)) || scored[0];
   if (!lead) throw new Error('no_lead_asset');
-  const peer = scored.find(a => a.symbol !== lead.symbol && !recentBias.last2.includes(a.symbol) && ['contract-meme', 'bnb-beta', 'meme', 'beta', 'major-beta', 'ai', lead.bucket].includes(a.bucket)) || scored.find(a => a.symbol !== lead.symbol) || anchor;
+  const peer = scored.find(a => a.symbol !== lead.symbol && !recentBias.last2.includes(a.symbol) && ['contract-meme', 'bnb-beta', 'meme', 'beta', 'major-beta', 'ai', 'high-vol', lead.bucket].includes(a.bucket)) || scored.find(a => a.symbol !== lead.symbol) || anchor;
   if (!peer) throw new Error('no_peer_asset');
   return {
     ok: true, source, generatedAt: new Date().toISOString(),
@@ -312,7 +312,8 @@ function attachStructuredMarketPack(pack) {
     crypto_beta: sectorHeat(['SOL', 'BNB', 'XRP', 'SUI', 'ENA', 'AVAX', 'ADA', 'ARB'], bySymbol),
     ai_stock_heat: null,
     crypto_ai_follow: sectorHeat(ASSET_UNIVERSE.crypto_ai, bySymbol),
-    meme_heat: sectorHeat(['DOGE', 'PEPE', 'WIF', 'BONK', 'PENGU', 'BABY', 'BOME', 'FLOKI', 'POPCAT', 'FARTCOIN'], bySymbol),
+    meme_heat: sectorHeat(['DOGE', 'PEPE', 'WIF', 'BONK', 'PENGU', 'BABY', 'BOME', 'FLOKI', 'POPCAT', 'FARTCOIN', 'TST', 'TRUMP'], bySymbol),
+    high_volatility_heat: sectorHeat(ASSET_UNIVERSE.crypto_high_volatility, bySymbol),
     layer1_heat: sectorHeat(['SOL', 'BNB', 'SUI', 'AVAX', 'ADA', 'NEAR', 'ICP'], bySymbol)
   };
   pack.trade_plan = pack.tradePlan || {};

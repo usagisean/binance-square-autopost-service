@@ -5,6 +5,7 @@ function unique(items = []) {
 const ASSET_UNIVERSE = {
   crypto_core: unique(['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'PEPE', 'WIF', 'BONK', 'PENGU', 'BABY', 'SUI', 'ENA', 'LINK', 'AAVE', 'AVAX', 'ADA', 'ZEC', 'BOB']),
   crypto_ai: unique(['NEAR', 'ICP', 'RENDER', 'FET', 'TAO', 'ARKM', 'WLD', 'VIRTUAL', 'AI', 'COOKIE', 'GRASS', 'IO', 'ATH', 'NMR']),
+  crypto_high_volatility: unique(['MYX', 'BSB', 'PIPPIN', 'RAVE', 'CHIP', 'TST', 'DOGS', 'NOT', 'DYM', 'CFG', 'HIVE', 'STEEM', 'UTK', 'PLUME', 'HIFI', 'HIGH', 'HUMA', 'SOPH', 'AIXBT', 'VANA', '1000SATS', 'ORDI', 'SAGA', 'MANTA', 'OMNI', 'NFP', 'PORTAL', 'ACE', 'PIXEL', 'BIGTIME', 'LISTA', 'ZK', 'ZRO', 'KAITO', 'BERA', 'TRUMP', 'DOOD', 'VINE', 'BROCCOLI']),
   stock_ai: unique(['NVDA', 'AMD', 'AVGO', 'TSM', 'ARM', 'MU', 'SMCI', 'PLTR', 'MSFT', 'GOOGL', 'META', 'AMZN', 'TSLA', 'CRWV', 'ORCL', 'VRT']),
   stock_crypto_beta: unique(['COIN', 'MSTR', 'HOOD']),
   etf_macro: unique(['QQQ', 'SOXX', 'SPY'])
@@ -29,7 +30,16 @@ const EXTRA_CONTRACT_META = {
   NEAR: { name: 'NEAR Protocol', bucket: 'ai' }, ICP: { name: 'Internet Computer', bucket: 'ai' }, RENDER: { name: 'Render', bucket: 'ai' },
   TAO: { name: 'Bittensor', bucket: 'ai' }, ARKM: { name: 'Arkham', bucket: 'ai' }, WLD: { name: 'Worldcoin', bucket: 'ai' },
   VIRTUAL: { name: 'Virtuals Protocol', bucket: 'ai' }, AI: { name: 'Sleepless AI', bucket: 'ai' }, COOKIE: { name: 'Cookie DAO', bucket: 'ai' },
-  GRASS: { name: 'Grass', bucket: 'ai' }, IO: { name: 'io.net', bucket: 'ai' }, ATH: { name: 'Aethir', bucket: 'ai' }, NMR: { name: 'Numeraire', bucket: 'ai' }
+  GRASS: { name: 'Grass', bucket: 'ai' }, IO: { name: 'io.net', bucket: 'ai' }, ATH: { name: 'Aethir', bucket: 'ai' }, NMR: { name: 'Numeraire', bucket: 'ai' },
+  MYX: { name: 'MYX Finance', bucket: 'high-vol' }, PIPPIN: { name: 'Pippin', bucket: 'high-vol' }, TST: { name: 'TST', bucket: 'contract-meme' },
+  DOGS: { name: 'Dogs', bucket: 'meme' }, NOT: { name: 'Notcoin', bucket: 'beta' }, DYM: { name: 'Dymension', bucket: 'beta' }, CFG: { name: 'Centrifuge', bucket: 'beta' },
+  HIVE: { name: 'Hive', bucket: 'high-vol' }, STEEM: { name: 'Steem', bucket: 'high-vol' }, UTK: { name: 'xMoney', bucket: 'high-vol' }, PLUME: { name: 'Plume', bucket: 'beta' },
+  HIFI: { name: 'Hifi Finance', bucket: 'high-vol' }, HIGH: { name: 'Highstreet', bucket: 'high-vol' }, HUMA: { name: 'Huma Finance', bucket: 'beta' }, SOPH: { name: 'Sophon', bucket: 'beta' },
+  AIXBT: { name: 'aixbt', bucket: 'ai' }, VANA: { name: 'Vana', bucket: 'ai' }, ORDI: { name: 'Ordinals', bucket: 'high-vol' }, SAGA: { name: 'Saga', bucket: 'beta' },
+  MANTA: { name: 'Manta', bucket: 'beta' }, OMNI: { name: 'Omni Network', bucket: 'beta' }, NFP: { name: 'NFPrompt', bucket: 'ai' }, PORTAL: { name: 'Portal', bucket: 'high-vol' },
+  ACE: { name: 'Fusionist', bucket: 'high-vol' }, PIXEL: { name: 'Pixels', bucket: 'high-vol' }, BIGTIME: { name: 'Big Time', bucket: 'high-vol' }, LISTA: { name: 'Lista', bucket: 'beta' },
+  ZK: { name: 'zkSync', bucket: 'beta' }, ZRO: { name: 'LayerZero', bucket: 'beta' }, KAITO: { name: 'Kaito', bucket: 'ai' }, BERA: { name: 'Berachain', bucket: 'beta' }, TRUMP: { name: 'Official Trump', bucket: 'meme' },
+  DOOD: { name: 'Doodles', bucket: 'high-vol' }, VINE: { name: 'Vine', bucket: 'high-vol' }, BROCCOLI: { name: 'Broccoli', bucket: 'contract-meme' }
 };
 
 const CONTRACT_META = { ...LEGACY_CONTRACT_META, ...EXTRA_CONTRACT_META };
@@ -41,6 +51,7 @@ const LEGACY_PRIORITY_SYMBOLS = unique([
 ]);
 
 const PRIORITY_SYMBOLS = unique([
+  ...ASSET_UNIVERSE.crypto_high_volatility,
   ...ASSET_UNIVERSE.crypto_ai,
   ...ASSET_UNIVERSE.crypto_core,
   ...LEGACY_PRIORITY_SYMBOLS
@@ -53,6 +64,7 @@ const MEME_SYMBOL_PATTERN = /DOGE|PEPE|WIF|BONK|BOME|FLOKI|POPCAT|PENGU|FART|SHI
 const DEFAULT_SQUARE_TAG_SYMBOLS = unique([
   ...ASSET_UNIVERSE.crypto_core,
   ...ASSET_UNIVERSE.crypto_ai,
+  ...ASSET_UNIVERSE.crypto_high_volatility,
   'BOME', 'FLOKI', 'POPCAT', 'FARTCOIN', 'ARB', 'POL'
 ]);
 
@@ -67,7 +79,7 @@ function cashtagList(symbols = []) {
 }
 
 function allTrackedCryptoSymbols() {
-  return unique([...ASSET_UNIVERSE.crypto_core, ...ASSET_UNIVERSE.crypto_ai, ...LEGACY_PRIORITY_SYMBOLS]);
+  return unique([...ASSET_UNIVERSE.crypto_core, ...ASSET_UNIVERSE.crypto_ai, ...ASSET_UNIVERSE.crypto_high_volatility, ...LEGACY_PRIORITY_SYMBOLS]);
 }
 
 module.exports = {
