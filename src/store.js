@@ -30,7 +30,7 @@ const defaultSettings = {
   timezone: 'Asia/Shanghai',
   minPostChars: 180,
   maxPostChars: 360,
-  bannedSymbols: ['MON'],
+  bannedSymbols: ['MON', 'UTK'],
   minSpotQuoteVolume: 5000000,
   marketCacheMaxAgeMinutes: 360,
   requireCashtags: true,

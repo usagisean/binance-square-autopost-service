@@ -5,7 +5,7 @@ function unique(items = []) {
 const ASSET_UNIVERSE = {
   crypto_core: unique(['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'PEPE', 'WIF', 'BONK', 'PENGU', 'BABY', 'SUI', 'ENA', 'LINK', 'AAVE', 'AVAX', 'ADA', 'ZEC', 'BOB']),
   crypto_ai: unique(['NEAR', 'ICP', 'RENDER', 'FET', 'TAO', 'ARKM', 'WLD', 'VIRTUAL', 'AI', 'COOKIE', 'GRASS', 'IO', 'ATH', 'NMR']),
-  crypto_high_volatility: unique(['MYX', 'BSB', 'PIPPIN', 'RAVE', 'CHIP', 'TST', 'DOGS', 'NOT', 'DYM', 'CFG', 'HIVE', 'STEEM', 'UTK', 'PLUME', 'HIFI', 'HIGH', 'HUMA', 'SOPH', 'AIXBT', 'VANA', '1000SATS', 'ORDI', 'SAGA', 'MANTA', 'OMNI', 'NFP', 'PORTAL', 'ACE', 'PIXEL', 'BIGTIME', 'LISTA', 'ZK', 'ZRO', 'KAITO', 'BERA', 'TRUMP', 'DOOD', 'VINE', 'BROCCOLI']),
+  crypto_high_volatility: unique(['MYX', 'BSB', 'PIPPIN', 'RAVE', 'CHIP', 'TST', 'DOGS', 'NOT', 'DYM', 'CFG', 'HIVE', 'STEEM', 'PLUME', 'HIFI', 'HIGH', 'HUMA', 'SOPH', 'AIXBT', 'VANA', '1000SATS', 'ORDI', 'SAGA', 'MANTA', 'OMNI', 'NFP', 'PORTAL', 'ACE', 'PIXEL', 'BIGTIME', 'LISTA', 'ZK', 'ZRO', 'KAITO', 'BERA', 'TRUMP', 'DOOD', 'VINE', 'BROCCOLI']),
   stock_ai: unique(['NVDA', 'AMD', 'AVGO', 'TSM', 'ARM', 'MU', 'SMCI', 'PLTR', 'MSFT', 'GOOGL', 'META', 'AMZN', 'TSLA', 'CRWV', 'ORCL', 'VRT']),
   stock_crypto_beta: unique(['COIN', 'MSTR', 'HOOD']),
   etf_macro: unique(['QQQ', 'SOXX', 'SPY'])
