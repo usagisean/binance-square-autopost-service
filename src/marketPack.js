@@ -43,6 +43,18 @@ function price(n) {
   return `$${n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')}`;
 }
 function normalizeBaseSymbol(symbol) { return String(symbol || '').replace(/USDT$/, '').replace(/^1000/, '').toUpperCase(); }
+function bannedBaseSet(settings = {}) {
+  return new Set((settings.bannedSymbols || []).map(s => String(s || '').trim().toUpperCase()).filter(Boolean));
+}
+function isBannedBase(base, settings = {}) {
+  return bannedBaseSet(settings).has(String(base || '').toUpperCase());
+}
+function packHasBannedSymbol(pack, settings = {}) {
+  const banned = bannedBaseSet(settings);
+  return [pack?.trio?.lead?.symbol, pack?.trio?.peer?.symbol, pack?.trio?.anchor?.symbol]
+    .filter(Boolean)
+    .some(symbol => banned.has(String(symbol).toUpperCase()));
+}
 function inferBucket(base) {
   if (CONTRACT_META[base]?.bucket) return CONTRACT_META[base].bucket;
   if (MEME_SYMBOL_PATTERN.test(base)) return 'contract-meme';
@@ -672,7 +684,7 @@ async function buildFuturesPack(settings) {
     const symbol = String(row?.symbol || '');
     if (!symbol.endsWith('USDT') || !tradable.has(symbol)) return false;
     const base = normalizeBaseSymbol(symbol);
-    if (!base || EXCLUDED_BASES.has(base)) return false;
+    if (!base || EXCLUDED_BASES.has(base) || isBannedBase(base, settings)) return false;
     const quoteVol = Number(row.quoteVolume || 0);
     return Number.isFinite(quoteVol) && quoteVol >= 50000;
   });
@@ -702,7 +714,7 @@ async function buildSpotPack(settings, futuresErr) {
     const symbol = String(row?.symbol || '');
     if (!symbol.endsWith('USDT')) return false;
     const base = normalizeBaseSymbol(symbol);
-    if (!base || EXCLUDED_BASES.has(base) || /(UP|DOWN|BULL|BEAR)$/.test(base)) return false;
+    if (!base || EXCLUDED_BASES.has(base) || isBannedBase(base, settings) || /(UP|DOWN|BULL|BEAR)$/.test(base)) return false;
     const quoteVol = Number(row.quoteVolume || 0);
     return Number.isFinite(quoteVol) && quoteVol >= minVol;
   });
@@ -731,7 +743,7 @@ async function buildMarketPack() {
       return pack;
     } catch (spotErr) {
       const cache = loadMarketCache(settings.marketCacheMaxAgeMinutes);
-      if (cache) return attachStructuredMarketPack({ ...cache.pack, generatedAt: new Date().toISOString(), cacheFallback: true, cacheSavedAt: new Date(cache.savedAt).toISOString(), fallbackReason: spotErr.message || String(spotErr) });
+      if (cache && !packHasBannedSymbol(cache.pack, settings)) return attachStructuredMarketPack({ ...cache.pack, generatedAt: new Date().toISOString(), cacheFallback: true, cacheSavedAt: new Date(cache.savedAt).toISOString(), fallbackReason: spotErr.message || String(spotErr) });
       throw new Error(`market_pack_failed:futures=${futuresErr.message || futuresErr};spot=${spotErr.message || spotErr}`);
     }
   }
