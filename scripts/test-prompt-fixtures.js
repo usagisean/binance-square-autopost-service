@@ -100,6 +100,13 @@ function basePack(extra = {}) {
   assert(validation.errors.some(e => e.includes('banned_phrase:条件计划')));
 })();
 
+(function formulaicMetricsValidation() {
+  const text = '$RENDER 现价7.12，1h +2.4%、4h +4.1%、24h +9.8%，成交额8200万，前20档买盘厚，点差很小；$FET 和 $BTC 只做参照，突破 $7.25 再看。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  assert(validation.errors.some(e => e.startsWith('too_many_metrics:')));
+  assert(validation.errors.includes('formulaic_opening'));
+})();
+
 (function lengthValidation() {
   const text = '$RENDER $FET $BTC 太短';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 80, maxPostChars: 120 }));

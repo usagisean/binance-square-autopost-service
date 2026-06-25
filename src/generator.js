@@ -511,8 +511,11 @@ function validatePostText(text, pack, settings = getSettings()) {
     }
   }
   if (settings.includeTradePlan !== false && String(settings.tradePlanMode || '').toLowerCase() !== 'off' && pack.tradePlan) {
-    if (!/(止损|失效|突破|跌破|回踩|反抽|偏多|偏空|看多|看空|观望)/.test(clean)) errors.push('missing_trade_plan');
+    if (!/(偏多|偏空|看多|看空|观望|不追|不碰|回踩|突破|跌破|放弃|等|空仓|少碰|过滤)/.test(clean)) errors.push('missing_trade_stance');
   }
+  const metricHits = (clean.match(/现价|1h|4h|24h|成交额|振幅|前20档|点差|买盘厚|卖压厚|资金费率|持仓|OI|主动买卖比/g) || []).length;
+  if (metricHits > 5) errors.push(`too_many_metrics:${metricHits}`);
+  if (/^\s*\$[A-Z0-9]{2,12}\s*现价/.test(clean) || /^\s*(这轮|这笔|现在|偏空|偏多|我这边只盯|这单)/.test(clean)) errors.push('formulaic_opening');
   const sim = maxRecentSimilarity(clean, settings);
   if (sim >= Number(settings.similarityThreshold || 0.72)) errors.push(`too_similar:${sim.toFixed(2)}`);
   return { ok: errors.length === 0, errors, text: clean, length: len };
@@ -536,10 +539,13 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 2. 必须保留并自然提到这 3 个 Cashtag：${tags}。
 3. 正文只围绕一个主角给判断；另外两个币只做参照，不能平均写成行情总结。
 4. 只能使用 facts / takeaways / trade plan / market pack 里的真实数据，禁止编造。
-5. 如果 facts 里有条件计划，必须自然写出方向、触发点、失效/止损；如果信号矛盾，可以直接写不碰。
-6. 不要标题、不要项目符号、不要免责声明、不要报告腔。
-7. 如果美股/ETF或AI板块参照缺失，正文不要写“暂无数据/数据缺失/本轮不使用”，直接忽略缺失部分。
-8. 禁止出现这些表达：${[...new Set([...DEFAULT_BANNED_PHRASES, ...(settings.bannedPhrases || [])])].join('、')}。
+5. 必须有清晰交易态度：偏多/偏空/观望/不追/不碰/只等回踩/只看突破都可以；但不需要每条都写完整进场、止损、失效。
+6. 最多写 1 到 2 个关键数据；不要把现价、1h、4h、24h、成交额、盘口全部列一遍。
+7. 不要以“$币种 现价...”“这轮...”“这笔...”“现在...”“偏多/偏空...”开头，换一个真人口吻的开头。
+8. 不要写“计划偏多/计划偏空/条件计划/只做条件/我的处理是”。
+9. 不要标题、不要项目符号、不要免责声明、不要报告腔。
+10. 如果美股/ETF或AI板块参照缺失，正文不要写“暂无数据/数据缺失/本轮不使用”，直接忽略缺失部分。
+11. 禁止出现这些表达：${[...new Set([...DEFAULT_BANNED_PHRASES, ...(settings.bannedPhrases || [])])].join('、')}。
 
 原文：
 ${text}
