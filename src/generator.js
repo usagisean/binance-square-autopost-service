@@ -498,7 +498,11 @@ function validatePostText(text, pack, settings = getSettings()) {
   const errors = [];
   const clean = compactText(text);
   const len = [...clean].length;
-  if (len < Number(settings.minPostChars || 180)) errors.push(`too_short:${len}`);
+  const configuredMin = Number(settings.minPostChars || 180);
+  // The prompt can ask for a richer post, but live publishing should not fail
+  // just because a natural short trading note lands around 110-130 chars.
+  const hardMin = configuredMin > 120 ? 110 : configuredMin;
+  if (len < hardMin) errors.push(`too_short:${len}`);
   if (len > Number(settings.maxPostChars || 360)) errors.push(`too_long:${len}`);
   const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '需注意风险', '暂无可用美股/ETF行情数据', '美股参照数据缺失', '本轮不使用美股作为判断依据', '暂无可用AI板块行情数据', 'AI板块数据不足', ...DEFAULT_BANNED_PHRASES];
   const banned = [...new Set([...fixedBanned, ...(settings.bannedPhrases || [])].map(s => String(s || '').trim()).filter(Boolean))];

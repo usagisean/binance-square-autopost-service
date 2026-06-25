@@ -113,6 +113,12 @@ function basePack(extra = {}) {
   assert(validation.errors.some(e => e.startsWith('too_short:')));
 })();
 
+(function configuredMinHasSafetyFloor() {
+  const text = '$RENDER 这单不追高，先看回踩有没有人接；$FET 比它弱，$BTC 又没给太多空间，过不去关键位就放弃，别在半空里追。AI币池有热度，但不是每个反抽都值得上车，等它自己把承接打出来再说。真要参与，也得等它把卖压吃掉。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 140, maxPostChars: 260 }));
+  assert(!validation.errors.some(e => e.startsWith('too_short:')));
+})();
+
 (function unavailablePlaceholderValidation() {
   const text = '$RENDER 先不追，$FET 和 $BTC 只做参照；暂无可用美股/ETF行情数据，本轮不使用美股作为判断依据，站上 $7.25 再看。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 260 }));
