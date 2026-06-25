@@ -43,11 +43,105 @@ function selectPostAngle(pack = {}) {
   ];
   return seededPick(options.length ? options : fallback, seed);
 }
+
+function selectStyleCard(pack = {}) {
+  const lead = pack.trio?.lead || {};
+  const peer = pack.trio?.peer || {};
+  const anchor = pack.trio?.anchor || {};
+  const seed = `style:${pack.generatedAt || ''}:${lead.symbol || ''}:${peer.symbol || ''}:${anchor.symbol || ''}`;
+  const lead1h = numeric(lead.change1h);
+  const lead24h = numeric(lead.change24h);
+  const anchor1h = numeric(anchor.change1h);
+  const depthLine = String([...(pack.facts || []), ...(pack.takeaways || [])].join(' '));
+  const options = [
+    {
+      id: 'street_note',
+      instruction: '像盘中随手记一条：第一句先抛结论或疑问，不要以“这轮/这笔/现在/偏多/偏空/不追”开头；最多写 2 个数字。'
+    },
+    {
+      id: 'trap_warning',
+      instruction: '写成提醒别人别被表面涨跌骗：重点是“哪里容易追错”，不是完整复盘；交易位只写一句，别写成公式。'
+    },
+    {
+      id: 'single_trigger',
+      instruction: '只写一个触发位和一个放弃位；不要写“计划偏多/计划偏空/条件计划”，要像真人说“过不去我就不碰”。'
+    },
+    {
+      id: 'relative_strength',
+      instruction: '用强弱差讲主角为什么值得/不值得盯：peer 和 anchor 只能做陪衬，不要逐个报数据。'
+    },
+    {
+      id: 'no_trade_has_value',
+      instruction: '如果信号一般，就把“不做也是交易”写清楚：少给价位，多写为什么这笔没有赔率。'
+    },
+    {
+      id: 'crowd_positioning',
+      instruction: '写成筹码/拥挤视角：盘口、资金费率、OI 或振幅只挑一个关键证据；别写行情流水账。'
+    },
+    {
+      id: 'short_commentary',
+      instruction: '压短，像发给交易群的一段判断：结论 + 一个证据 + 一个动作。不要把 1h/4h/24h 都列出来。'
+    }
+  ];
+  if (lead24h > 15 || Math.abs(lead1h) > 2.5) {
+    options.unshift({
+      id: 'late_move',
+      instruction: '主角波动已经大，第一句写“这里最怕的不是错过，是追在别人兑现的位置”这类意思，但不要原句照抄；强调等待回踩或放弃。'
+    });
+  }
+  if (anchor1h < 0 && lead1h > 0) {
+    options.unshift({
+      id: 'index_not_helping',
+      instruction: '主流币没配合时，写小币单独硬拉的缺陷；不要喊单，核心是容错低。'
+    });
+  }
+  if (/盘口|卖压|买盘|资金费率|持仓|OI|主动买卖比/.test(depthLine)) {
+    options.unshift({
+      id: 'microstructure',
+      instruction: '优先写盘口/杠杆的一处异常，别从涨跌幅开头；把价位写成“过不去/跌回去/站不住”这种真人表达。'
+    });
+  }
+  return seededPick(options, seed);
+}
+
+function formatTradePlanForPrompt(tradePlan = null) {
+  if (!tradePlan) return '';
+  const symbol = tradePlan.symbol || '';
+  const bias = tradePlan.bias || (tradePlan.direction === 'short' ? '看跌' : tradePlan.direction === 'long' ? '看涨' : '观望');
+  const parts = [`${symbol} 方向参考：${bias}`];
+  if (tradePlan.direction === 'long') {
+    if (tradePlan.trigger) parts.push(`强势触发看 ${tradePlan.trigger}`);
+    if (tradePlan.entry) parts.push(`回踩参考 ${tradePlan.entry}`);
+    if (tradePlan.invalidation || tradePlan.stopLoss) parts.push(`失效看 ${tradePlan.invalidation || tradePlan.stopLoss}`);
+  } else if (tradePlan.direction === 'short') {
+    if (tradePlan.trigger) parts.push(`转弱触发看 ${tradePlan.trigger}`);
+    if (tradePlan.entry) parts.push(`反抽压力看 ${tradePlan.entry}`);
+    if (tradePlan.invalidation || tradePlan.stopLoss) parts.push(`失效看 ${tradePlan.invalidation || tradePlan.stopLoss}`);
+  } else {
+    if (tradePlan.trigger) parts.push(`区间触发看 ${tradePlan.trigger}`);
+    if (tradePlan.invalidation) parts.push(`区间参考 ${tradePlan.invalidation}`);
+  }
+  return `${parts.filter(Boolean).join('；')}。这是内部参考，正文不要原样照抄，不要写“计划偏多/计划偏空/条件计划”。`;
+}
+
+function recentPostBrief(settings = getSettings()) {
+  const rows = listRuns(20)
+    .filter(r => r.postText && ['published', 'preview'].includes(r.status))
+    .slice(0, 8);
+  if (!rows.length) return '暂无近期正文。';
+  return rows.map((r, idx) => {
+    const symbols = [r.lead, r.peer, r.anchor].filter(Boolean).join('/');
+    const text = compactText(r.postText).replace(/\s+/g, ' ').slice(0, 110);
+    return `${idx + 1}. ${symbols}: ${text}`;
+  }).join('\n');
+}
+
 function renderTemplate(template, pack, settings = getSettings()) {
   const lead = pack.trio.lead.symbol;
   const peer = pack.trio.peer.symbol;
   const anchor = pack.trio.anchor.symbol;
   const postAngle = selectPostAngle(pack);
+  const styleCard = selectStyleCard(pack);
   const voiceAngle = postAngle?.instruction || '只围绕一个主角给出清晰判断，其他币只做参照。';
   const vars = {
     JOB_NAME: settings.jobName || '',
@@ -58,6 +152,8 @@ function renderTemplate(template, pack, settings = getSettings()) {
     POST_TARGET: settings.postTarget || '',
     VOICE_ANGLE: voiceAngle,
     POST_ANGLE: postAngle?.id || '',
+    STYLE_CARD: styleCard?.instruction || '',
+    STYLE_CARD_ID: styleCard?.id || '',
     MIN_POST_CHARS: String(settings.minPostChars || 180),
     MAX_POST_CHARS: String(settings.maxPostChars || 360),
     LEAD: lead,
@@ -68,8 +164,9 @@ function renderTemplate(template, pack, settings = getSettings()) {
     ANCHOR_CASHTAG: cashtag(anchor),
     FACTS: (pack.facts || []).join('\n'),
     TAKEAWAYS: (pack.takeaways || []).join('\n'),
-    TRADE_PLAN: pack.tradePlan?.summary || '',
+    TRADE_PLAN: formatTradePlanForPrompt(pack.tradePlan),
     TRADE_PLAN_JSON: pack.tradePlan ? JSON.stringify(pack.tradePlan, null, 2) : '',
+    RECENT_POSTS: recentPostBrief(settings),
     EXTERNAL_INTEL_JSON: pack.externalIntel ? JSON.stringify(pack.externalIntel, null, 2) : '',
     STOCK_CASHTAGS: pack.stockCashtags || '',
     MACRO_CASHTAGS: pack.macroCashtags || '',

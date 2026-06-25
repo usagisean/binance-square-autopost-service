@@ -93,6 +93,13 @@ function basePack(extra = {}) {
   assert(validation.errors.some(e => e.includes('banned_phrase:主线')));
 })();
 
+(function formulaicTradePlanValidation() {
+  const text = '$RENDER 计划偏多，$FET 和 $BTC 参照看；条件计划是突破 $7.25 再看，跌回 $6.90 就放弃。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  assert(validation.errors.some(e => e.includes('banned_phrase:计划偏多')));
+  assert(validation.errors.some(e => e.includes('banned_phrase:条件计划')));
+})();
+
 (function lengthValidation() {
   const text = '$RENDER $FET $BTC 太短';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 80, maxPostChars: 120 }));

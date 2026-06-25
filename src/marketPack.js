@@ -666,8 +666,9 @@ async function enrichMarketIntel(pack, isFutures) {
   const tradePlan = buildTradePlan(pack, intel, leadKlines, isFutures, getSettings());
   if (tradePlan) {
     pack.tradePlan = tradePlan;
-    pack.facts.push(tradePlan.summary);
-    pack.takeaways.push(`如果写交易计划，只能写 ${tradePlan.symbol} 的条件式 ${tradePlan.bias} 方案：${tradePlan.summary}`);
+    // Keep trade levels in a dedicated field instead of mixing the templated
+    // summary into facts/takeaways. When the summary lived in facts, the LLM
+    // kept copying "条件计划/计划偏多/失效" phrasing into every post.
   }
   await appendConfiguredIntel(pack);
   return pack;
