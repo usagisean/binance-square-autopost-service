@@ -171,8 +171,8 @@
       <div class="grid4"><div><label>Lead 冷却次数</label><input id="leadCooldownRuns" type="number" min="0"></div><div><label>Lead 冷却分钟</label><input id="leadCooldownMinutes" type="number" min="0"></div><div><label>连续失败自动暂停</label><input id="maxConsecutiveFailures" type="number" min="0"></div><div><label>相似度阈值</label><input id="similarityThreshold" type="number" min="0" max="1" step="0.01"></div></div>
       <label>禁用词 / 禁止表达（每行一个）</label><textarea id="bannedPhrases" class="small-textarea" placeholder="拧巴&#10;模板腔&#10;起飞"></textarea>
       <h3>交易计划与标签</h3>
-      <label><input type="checkbox" id="includeTradePlan">正文加入条件式交易计划（方向 / 触发 / 失效或止损）</label>
-      <label>交易计划模式</label><select id="tradePlanMode"><option value="conditional">conditional：条件式，不强喊单</option><option value="levels">levels：更偏价位计划</option><option value="off">off：不写交易计划</option></select>
+      <label><input type="checkbox" id="includeTradePlan">生成盘中位置参考（正文不写成交易计划）</label>
+      <label>交易计划模式</label><select id="tradePlanMode"><option value="opinion">opinion：人话观点，只轻带一个位置</option><option value="conditional">conditional：条件式，不强喊单</option><option value="levels">levels：更偏价位计划</option><option value="off">off：不写位置参考</option></select>
       <label><input type="checkbox" id="preferSquareTagSymbols">优先选择更容易被 Square 识别出底部币种卡片的币</label>
       <label>Square 标签优先币种（每行或逗号分隔）</label><textarea id="squareTagSymbols" class="small-textarea" placeholder="BTC,ETH,SOL,DOGE,PEPE"></textarea>
       <div style="height:14px"></div><button onclick="saveSettings()">保存任务设置</button>

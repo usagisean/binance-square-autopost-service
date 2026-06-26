@@ -41,7 +41,7 @@ const defaultSettings = {
   similarityThreshold: 0.72,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
-  tradePlanMode: 'conditional',
+  tradePlanMode: 'opinion',
   preferSquareTagSymbols: true,
   squareTagSymbols: DEFAULT_SQUARE_TAG_SYMBOLS,
   llmProvider: config.llmProvider,

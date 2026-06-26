@@ -17,7 +17,7 @@ function baseSettings(extra = {}) {
     bannedPhrases: [],
     requireCashtags: true,
     includeTradePlan: true,
-    tradePlanMode: 'conditional',
+    tradePlanMode: 'opinion',
     similarityThreshold: 0,
     ...extra
   };
@@ -79,8 +79,8 @@ function basePack(extra = {}) {
   const pack = basePack();
   const angle = selectPostAngle(pack);
   const rendered = renderTemplate(template, pack, baseSettings());
-  assert(['btc_not_confirming', 'chase_risk', 'crypto_ai_confirmed'].includes(angle.id));
-  assert(rendered.includes('追高容错低'));
+  assert(['btc_eth_not_lifting', 'move_already_loud', 'ai_coin_attention'].includes(angle.id));
+  assert(rendered.includes('人话') || rendered.includes('盘中'));
 })();
 
 (function marketPackJsonSerializable() {
@@ -114,7 +114,7 @@ function basePack(extra = {}) {
 })();
 
 (function configuredMinHasSafetyFloor() {
-  const text = '$RENDER 这单不追高，先看回踩有没有人接；$FET 比它弱，$BTC 又没给太多空间，过不去关键位就放弃，别在半空里追。AI币池有热度，但不是每个反抽都值得上车，等它自己把承接打出来再说。真要参与，也得等它把卖压吃掉。';
+  const text = '$RENDER 这波别只看它涨，AI币池里真正有人多看一眼的票不多；$FET 比它弱，$BTC 又没把气氛托起来。它要是连 $7.25 都拿不回来，热度很容易被别的票抢走。真想看，也得等它先把上面那层卖盘吃掉一点，不然就是白热闹。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 140, maxPostChars: 260 }));
   assert(!validation.errors.some(e => e.startsWith('too_short:')));
 })();
