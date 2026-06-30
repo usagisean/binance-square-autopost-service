@@ -42,6 +42,8 @@ const defaultSettings = {
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
   tradePlanMode: 'opinion',
+  enableImagePosts: String(process.env.ENABLE_IMAGE_POSTS || '').toLowerCase() === 'true',
+  imagePaths: String(process.env.IMAGE_PATHS || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 4),
   preferSquareTagSymbols: true,
   squareTagSymbols: DEFAULT_SQUARE_TAG_SYMBOLS,
   llmProvider: config.llmProvider,
@@ -122,7 +124,13 @@ function saveSettings(patch) {
   next.maxConsecutiveFailures = Math.max(0, Number(next.maxConsecutiveFailures ?? defaultSettings.maxConsecutiveFailures));
   next.similarityThreshold = Math.max(0, Math.min(1, Number(next.similarityThreshold ?? defaultSettings.similarityThreshold)));
   next.includeTradePlan = next.includeTradePlan !== false;
-  next.tradePlanMode = ['conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
+  next.tradePlanMode = ['opinion', 'soft_opinion', 'conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
+  next.enableImagePosts = next.enableImagePosts === true;
+  if (!Array.isArray(next.imagePaths)) {
+    next.imagePaths = String(next.imagePaths || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 4);
+  } else {
+    next.imagePaths = next.imagePaths.map(s => String(s).trim()).filter(Boolean).slice(0, 4);
+  }
   next.preferSquareTagSymbols = next.preferSquareTagSymbols !== false;
   if (!Array.isArray(next.bannedPhrases)) {
     next.bannedPhrases = String(next.bannedPhrases || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);

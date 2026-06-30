@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { renderTemplate, validatePostText, selectPostAngle } = require('../src/generator');
+const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -123,6 +124,12 @@ function basePack(extra = {}) {
   const text = '$RENDER 先不追，$FET 和 $BTC 只做参照；暂无可用美股/ETF行情数据，本轮不使用美股作为判断依据，站上 $7.25 再看。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 260 }));
   assert(validation.errors.some(e => e.includes('banned_phrase:暂无可用美股/ETF行情数据')));
+})();
+
+(function mediaHelpers() {
+  assert.strictEqual(getContentType('/tmp/a.png'), 'image/png');
+  assert.strictEqual(getContentType('/tmp/a.jpg'), 'image/jpeg');
+  assert(resolveImagePath('images/test.png').endsWith('/data/images/test.png'));
 })();
 
 console.log('prompt fixture tests passed');

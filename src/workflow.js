@@ -13,6 +13,11 @@ function formatTime(tz = 'Asia/Shanghai') {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
 }
 
+function configuredImagePaths(settings = {}) {
+  if (settings.enableImagePosts !== true) return [];
+  return (settings.imagePaths || []).map(x => String(x || '').trim()).filter(Boolean).slice(0, 4);
+}
+
 async function runOnce(mode = 'dry-run', meta = {}) {
   const startedAt = Date.now();
   const settings = getSettings();
@@ -28,6 +33,7 @@ async function runOnce(mode = 'dry-run', meta = {}) {
     if (banned) throw new Error(`banned_symbol_in_trio:${banned}`);
 
     generated = await generatePost(pack);
+    const imagePaths = configuredImagePaths(settings);
 
     const livePublish = mode === 'publish' && settings.publishMode === 'live';
     if (!livePublish) {
@@ -42,11 +48,12 @@ async function runOnce(mode = 'dry-run', meta = {}) {
         postText: generated.text, promptId: generated.promptId, promptName: generated.promptName,
         provider: generated.provider, channelId: generated.channelId, channelName: generated.channelName, model: generated.model,
         llmAttempts: generated.attempts,
+        media: { enabled: settings.enableImagePosts === true, imagePaths },
         facts: pack.facts, takeaways: pack.takeaways, meta
       });
     }
 
-    const published = await publishToBinanceSquare(generated.text);
+    const published = await publishToBinanceSquare(generated.text, { imagePaths });
     const nextCounter = incrementCounter({ url: published.url, symbol: pack.trio.lead.symbol }, settings);
     const row = appendRun({
       mode, status: 'published', durationMs: Date.now() - startedAt, source: pack.source,
@@ -55,6 +62,7 @@ async function runOnce(mode = 'dry-run', meta = {}) {
       promptId: generated.promptId, promptName: generated.promptName,
       provider: generated.provider, channelId: generated.channelId, channelName: generated.channelName, model: generated.model,
       llmAttempts: generated.attempts,
+      media: { enabled: settings.enableImagePosts === true, imagePaths, images: published.images || [] },
       counter: { date: nextCounter.date, count: nextCounter.count, remaining: Math.max(0, Number(settings.maxDailyPosts || 100) - nextCounter.count) },
       facts: pack.facts, takeaways: pack.takeaways, meta
     });
