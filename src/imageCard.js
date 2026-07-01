@@ -111,6 +111,9 @@ function buildSvg(pack, postText = '') {
   const leadColor = colorByPct(lead.change24h);
   return `
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <style>
+    text { font-family: "Noto Sans CJK SC", "Noto Sans CJK", "DejaVu Sans", Arial, sans-serif; }
+  </style>
   <rect width="1080" height="1080" fill="#0b0e11"/>
   <rect x="56" y="56" width="968" height="968" rx="38" fill="#151a22" stroke="#2b3139" stroke-width="2"/>
   <rect x="56" y="56" width="968" height="10" fill="#f0b90b"/>
