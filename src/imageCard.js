@@ -83,42 +83,21 @@ function tspans(lines, x, y, size, lineHeight, fill, weight = 700) {
   )).join('\n');
 }
 
-function symbolCard(asset, x, y, w, h, label) {
+function miniMetric(asset, x, y, label) {
   const c = colorByPct(asset?.change24h);
   return `
     <g transform="translate(${x} ${y})">
-      <rect width="${w}" height="${h}" rx="28" fill="#111827" stroke="#263142" stroke-width="2"/>
-      <text x="28" y="40" font-size="22" fill="#8792a2" font-weight="700">${esc(label)}</text>
-      <text x="28" y="88" font-size="44" fill="#f5f7fb" font-weight="900">$${esc(asset?.symbol || '--')}</text>
-      <text x="28" y="128" font-size="22" fill="#8792a2">PRICE</text>
-      <text x="112" y="128" font-size="27" fill="#f5f7fb" font-weight="800">${esc(price(asset?.price))}</text>
-      <text x="${w - 168}" y="128" font-size="22" fill="#8792a2">24H</text>
-      <text x="${w - 98}" y="128" font-size="27" fill="${c}" font-weight="900">${esc(pct(asset?.change24h))}</text>
+      <text x="0" y="0" font-size="24" fill="#848e9c" font-weight="700">${esc(label)}</text>
+      <text x="0" y="48" font-size="46" fill="#f5f5f5" font-weight="900">$${esc(asset?.symbol || '--')}</text>
+      <text x="0" y="90" font-size="26" fill="${c}" font-weight="900">${esc(pct(asset?.change24h))}</text>
+      <text x="120" y="90" font-size="24" fill="#848e9c">${esc(price(asset?.price))}</text>
     </g>`;
-}
-
-function bars(pack) {
-  const items = [pack.trio?.lead, pack.trio?.peer, pack.trio?.anchor].filter(Boolean);
-  const maxAbs = Math.max(1, ...items.map(x => Math.abs(num(x.change24h) || 0)));
-  return items.map((a, i) => {
-    const n = num(a.change24h) || 0;
-    const width = Math.max(8, Math.min(520, Math.abs(n) / maxAbs * 520));
-    const x = 280;
-    const y = 690 + i * 66;
-    const fill = colorByPct(n);
-    return `
-      <text x="78" y="${y + 31}" font-size="32" fill="#f5f7fb" font-weight="900">$${esc(a.symbol)}</text>
-      <rect x="${x}" y="${y}" width="540" height="34" rx="17" fill="#151d29"/>
-      <rect x="${x}" y="${y}" width="${width}" height="34" rx="17" fill="${fill}" opacity="0.92"/>
-      <text x="850" y="${y + 29}" font-size="30" fill="${fill}" font-weight="900">${esc(pct(n))}</text>`;
-  }).join('\n');
 }
 
 function keyLevel(pack) {
   const tp = pack.tradePlan || {};
-  if (tp.direction === 'long' && tp.trigger) return String(tp.trigger);
-  if (tp.direction === 'short' && tp.entry) return String(tp.entry);
   if (tp.trigger) return String(tp.trigger).split('/')[0].trim();
+  if (tp.entry) return String(tp.entry).split('-')[0].trim();
   return price(pack.trio?.lead?.price);
 }
 
@@ -128,52 +107,42 @@ function buildSvg(pack, postText = '') {
   const anchor = pack.trio?.anchor || {};
   const generatedAt = new Date(pack.generatedAt || Date.now());
   const time = generatedAt.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  const heat = Math.min(100, Math.round(Math.abs(num(lead.change24h) || 0) * 2.5 + Math.abs(num(lead.change1h) || 0) * 8 + Math.min(30, (num(lead.amplitude24h) || 0))));
-  const hot = heat >= 70 ? 'HOT' : heat >= 40 ? 'WATCH' : 'WAIT';
-  const noteLines = wrapText(postText || `$${lead.symbol} / $${peer.symbol} / $${anchor.symbol}`, 32, 2);
+  const noteLines = wrapText(postText || `$${lead.symbol} / $${peer.symbol} / $${anchor.symbol}`, 34, 3);
+  const leadColor = colorByPct(lead.change24h);
   return `
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0b1020"/>
-      <stop offset="0.55" stop-color="#111827"/>
-      <stop offset="1" stop-color="#06080f"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="30%" r="70%">
-      <stop offset="0" stop-color="#f0b90b" stop-opacity="0.20"/>
-      <stop offset="1" stop-color="#f0b90b" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <rect width="1080" height="1080" fill="url(#bg)"/>
-  <rect width="1080" height="1080" fill="url(#glow)"/>
-  <circle cx="930" cy="140" r="210" fill="#f0b90b" opacity="0.06"/>
-  <circle cx="95" cy="960" r="260" fill="#1e90ff" opacity="0.06"/>
+  <rect width="1080" height="1080" fill="#0b0e11"/>
+  <rect x="56" y="56" width="968" height="968" rx="38" fill="#151a22" stroke="#2b3139" stroke-width="2"/>
+  <rect x="56" y="56" width="968" height="10" fill="#f0b90b"/>
 
-  <text x="72" y="88" font-size="28" fill="#8792a2" font-weight="800" letter-spacing="5">BINANCE SQUARE AUTOPOST</text>
-  <rect x="72" y="118" width="180" height="54" rx="27" fill="#f0b90b"/>
-  <text x="102" y="155" font-size="30" fill="#0b1020" font-weight="900">${esc(hot)}</text>
-  <text x="280" y="156" font-size="30" fill="#8792a2" font-weight="700">${esc(time)}</text>
+  <text x="92" y="126" font-size="26" fill="#f0b90b" font-weight="900">BINANCE SQUARE</text>
+  <text x="760" y="126" font-size="22" fill="#848e9c" font-weight="700">${esc(time)}</text>
 
-  <text x="72" y="278" font-size="96" fill="#f5f7fb" font-weight="900">$${esc(lead.symbol || '--')}</text>
-  <text x="74" y="337" font-size="34" fill="#8792a2" font-weight="700">KEY AREA</text>
-  <text x="286" y="338" font-size="42" fill="#f0b90b" font-weight="900">${esc(keyLevel(pack))}</text>
-  <text x="74" y="408" font-size="34" fill="#8792a2" font-weight="700">24H</text>
-  <text x="165" y="410" font-size="54" fill="${colorByPct(lead.change24h)}" font-weight="900">${esc(pct(lead.change24h))}</text>
-  <text x="400" y="408" font-size="34" fill="#8792a2" font-weight="700">VOL</text>
-  <text x="482" y="410" font-size="48" fill="#f5f7fb" font-weight="900">${esc(usd(lead.volume24h))}</text>
+  <text x="92" y="258" font-size="104" fill="#f5f5f5" font-weight="900">$${esc(lead.symbol || '--')}</text>
+  <text x="92" y="314" font-size="30" fill="#848e9c" font-weight="800">KEY AREA</text>
+  <text x="270" y="316" font-size="38" fill="#f0b90b" font-weight="900">${esc(keyLevel(pack))}</text>
 
-  ${symbolCard(peer, 72, 456, 440, 154, 'PEER')}
-  ${symbolCard(anchor, 568, 456, 440, 154, 'ANCHOR')}
+  <g transform="translate(92 380)">
+    <rect width="410" height="128" rx="24" fill="#0b0e11" stroke="#2b3139"/>
+    <text x="28" y="44" font-size="24" fill="#848e9c" font-weight="800">24H</text>
+    <text x="28" y="98" font-size="52" fill="${leadColor}" font-weight="900">${esc(pct(lead.change24h))}</text>
+  </g>
+  <g transform="translate(550 380)">
+    <rect width="410" height="128" rx="24" fill="#0b0e11" stroke="#2b3139"/>
+    <text x="28" y="44" font-size="24" fill="#848e9c" font-weight="800">VOLUME</text>
+    <text x="28" y="98" font-size="48" fill="#f5f5f5" font-weight="900">${esc(usd(lead.volume24h))}</text>
+  </g>
 
-  <text x="72" y="655" font-size="28" fill="#8792a2" font-weight="800" letter-spacing="4">RELATIVE HEAT</text>
-  ${bars(pack)}
+  <line x1="92" y1="566" x2="988" y2="566" stroke="#2b3139" stroke-width="2"/>
+  ${miniMetric(peer, 92, 636, 'PEER')}
+  ${miniMetric(anchor, 560, 636, 'ANCHOR')}
 
-  <rect x="72" y="875" width="936" height="132" rx="28" fill="#0b1220" stroke="#263142" stroke-width="2"/>
-  <text x="104" y="925" font-size="26" fill="#8792a2" font-weight="800">MARKET NOTE</text>
-  ${tspans(noteLines, 104, 958, 27, 32, '#f5f7fb', 700)}
+  <rect x="92" y="780" width="896" height="152" rx="24" fill="#0b0e11" stroke="#2b3139"/>
+  <text x="124" y="830" font-size="24" fill="#848e9c" font-weight="800">MARKET NOTE</text>
+  ${tspans(noteLines, 124, 874, 28, 36, '#f5f5f5', 700)}
 
-  <text x="72" y="1042" font-size="26" fill="#8792a2" font-weight="700">$${esc(lead.symbol || '--')}  $${esc(peer.symbol || '--')}  $${esc(anchor.symbol || '--')}</text>
-  <text x="782" y="1042" font-size="24" fill="#526071" font-weight="700">Square market card</text>
+  <text x="92" y="982" font-size="26" fill="#848e9c" font-weight="800">$${esc(lead.symbol || '--')}  $${esc(peer.symbol || '--')}  $${esc(anchor.symbol || '--')}</text>
+  <text x="770" y="982" font-size="22" fill="#58606d" font-weight="700">market snapshot</text>
 </svg>`;
 }
 

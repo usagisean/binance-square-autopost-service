@@ -513,7 +513,7 @@ images/test.png
 
 也可以直接在后台“图片素材”上传，图片会保存到 `data/images/`。
 
-如果勾选“自动生成行情配图”，服务会基于本轮 lead / peer / anchor、涨跌幅、成交额和正文摘要生成一张 1080x1080 PNG，并作为本轮配图上传。默认关闭，不影响纯文本发布。
+如果勾选“自动生成行情配图”，服务会基于本轮 lead / peer / anchor、涨跌幅、成交额和正文摘要生成一张克制的 1080x1080 行情卡片，并作为本轮配图上传。默认关闭，不影响纯文本发布。`AUTO_IMAGE_MAX_DAILY` / 后台“每日自动生成图上限”用于限制每天真正发出去的自动生成图数量，默认 5；达到上限后不会停发，只会自动降级为原来的纯文本发帖。
 
 实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 获取上传 URL，再 PUT 图片，轮询 `/image/imageStatus`，最后发布 `contentType: 1 + bodyTextOnly + imageList`。
 
