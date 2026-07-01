@@ -490,7 +490,14 @@ https://你的完整域名
 
 ## 图片发帖支持（可选）
 
-服务默认仍按纯文本发布。需要图片帖时，在后台“任务设置”里开启“启用图片发帖”，并填写最多 4 张图片路径。
+服务默认仍按纯文本发布。需要图片帖时，在后台“图片素材”上传图片，然后在“任务设置”里开启“启用图片发帖”。
+
+配图策略支持：
+
+- `static`：固定图片路径，最多 4 张。
+- `random`：从图片素材库随机选择。
+- `rotate`：从图片素材库按发帖次数轮流选择。
+- `off`：即使开启了图片模块，本轮也不配图。
 
 Docker 部署时，图片路径建议放在 VPS 项目挂载的数据目录里，例如：
 
@@ -503,6 +510,8 @@ Docker 部署时，图片路径建议放在 VPS 项目挂载的数据目录里�
 ```text
 images/test.png
 ```
+
+也可以直接在后台“图片素材”上传，图片会保存到 `data/images/`。
 
 实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 获取上传 URL，再 PUT 图片，轮询 `/image/imageStatus`，最后发布 `contentType: 1 + bodyTextOnly + imageList`。
 

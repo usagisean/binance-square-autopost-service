@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { renderTemplate, validatePostText, selectPostAngle } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
+const { selectImagePaths } = require('../src/imageAssets');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -130,6 +131,8 @@ function basePack(extra = {}) {
   assert.strictEqual(getContentType('/tmp/a.png'), 'image/png');
   assert.strictEqual(getContentType('/tmp/a.jpg'), 'image/jpeg');
   assert(resolveImagePath('images/test.png').endsWith('/data/images/test.png'));
+  assert.deepStrictEqual(selectImagePaths({ enableImagePosts: false, imagePaths: ['images/a.png'] }), []);
+  assert.deepStrictEqual(selectImagePaths({ enableImagePosts: true, imagePostMode: 'static', imagePathCount: 1, imagePaths: ['images/a.png', 'images/b.png'] }), ['images/a.png']);
 })();
 
 console.log('prompt fixture tests passed');

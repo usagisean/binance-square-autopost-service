@@ -3,6 +3,7 @@ const { generatePost } = require('./generator');
 const { publishToBinanceSquare } = require('./publisher');
 const { sendTelegram } = require('./telegram');
 const { appendRun, getSettings, saveSettings, getCounter, incrementCounter, listRuns } = require('./store');
+const { selectImagePaths } = require('./imageAssets');
 
 function hasBannedSymbol(pack, settings) {
   const banned = new Set((settings.bannedSymbols || []).map(s => String(s).toUpperCase()));
@@ -14,8 +15,7 @@ function formatTime(tz = 'Asia/Shanghai') {
 }
 
 function configuredImagePaths(settings = {}) {
-  if (settings.enableImagePosts !== true) return [];
-  return (settings.imagePaths || []).map(x => String(x || '').trim()).filter(Boolean).slice(0, 4);
+  return selectImagePaths(settings, getCounter(settings).count);
 }
 
 async function runOnce(mode = 'dry-run', meta = {}) {

@@ -10,6 +10,7 @@ const { publisherStatus } = require('./publisher');
 const { getJson } = require('./httpClient');
 const { callOpenAIWithCandidate, effectiveMaxTokens } = require('./generator');
 const { sendTelegram } = require('./telegram');
+const { listImageAssets, saveImageAsset, deleteImageAsset, assetPath, contentTypeFor, MAX_IMAGE_BYTES } = require('./imageAssets');
 
 initStore();
 
@@ -33,6 +34,59 @@ function readBody(req) {
     });
     req.on('error', reject);
   });
+}
+function readRawBody(req, maxBytes = 16 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', c => {
+      total += c.length;
+      if (total > maxBytes) return reject(new Error('body_too_large'));
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+function splitBuffer(buffer, separator) {
+  const out = [];
+  let start = 0;
+  let idx = buffer.indexOf(separator, start);
+  while (idx !== -1) {
+    out.push(buffer.slice(start, idx));
+    start = idx + separator.length;
+    idx = buffer.indexOf(separator, start);
+  }
+  out.push(buffer.slice(start));
+  return out;
+}
+function trimCrlf(buffer) {
+  let start = 0;
+  let end = buffer.length;
+  while (buffer[start] === 13 || buffer[start] === 10) start++;
+  while (end > start && (buffer[end - 1] === 13 || buffer[end - 1] === 10)) end--;
+  return buffer.slice(start, end);
+}
+function parseMultipartFiles(buffer, contentType = '') {
+  const match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!match) throw new Error('missing_multipart_boundary');
+  const boundary = match[1] || match[2];
+  const parts = splitBuffer(buffer, Buffer.from(`--${boundary}`));
+  const files = [];
+  for (let part of parts) {
+    part = trimCrlf(part);
+    if (!part.length || part.equals(Buffer.from('--'))) continue;
+    if (part.slice(0, 2).toString() === '--') continue;
+    const sep = Buffer.from('\r\n\r\n');
+    const headerEnd = part.indexOf(sep);
+    if (headerEnd === -1) continue;
+    const headerText = part.slice(0, headerEnd).toString('utf8');
+    const body = trimCrlf(part.slice(headerEnd + sep.length));
+    const filename = (headerText.match(/filename="([^"]*)"/i) || [])[1];
+    if (!filename) continue;
+    files.push({ filename, buffer: body });
+  }
+  return files;
 }
 function authorized(req) {
   if (!config.adminToken) return true;
@@ -135,6 +189,35 @@ async function handleApi(req, res, url) {
     });
   }
   if (!requireAuth(req, res)) return;
+  if (req.method === 'GET' && url.pathname === '/api/images') {
+    return sendJson(res, 200, { ok: true, images: listImageAssets() });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/images') {
+    const raw = await readRawBody(req, 4 * MAX_IMAGE_BYTES + 1024 * 1024);
+    const contentType = req.headers['content-type'] || '';
+    let files = [];
+    if (/multipart\/form-data/i.test(contentType)) {
+      files = parseMultipartFiles(raw, contentType);
+    } else {
+      const body = JSON.parse(raw.toString('utf8') || '{}');
+      if (body.filename && body.dataBase64) files = [{ filename: body.filename, buffer: Buffer.from(String(body.dataBase64), 'base64') }];
+    }
+    if (!files.length) throw new Error('no_image_files');
+    const saved = files.slice(0, 8).map(f => saveImageAsset(f.filename, f.buffer));
+    return sendJson(res, 200, { ok: true, images: saved, allImages: listImageAssets() });
+  }
+  const imageFile = url.pathname.match(/^\/api\/images\/([^/]+)\/file$/);
+  if (imageFile && req.method === 'GET') {
+    const filename = decodeURIComponent(imageFile[1]);
+    const file = assetPath(filename);
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return notFound(res);
+    res.writeHead(200, { 'Content-Type': contentTypeFor(filename), 'Cache-Control': 'no-store' });
+    return fs.createReadStream(file).pipe(res);
+  }
+  const imageDelete = url.pathname.match(/^\/api\/images\/([^/]+)$/);
+  if (imageDelete && req.method === 'DELETE') {
+    return sendJson(res, 200, { ok: true, deleted: deleteImageAsset(decodeURIComponent(imageDelete[1])), images: listImageAssets() });
+  }
   if (req.method === 'GET' && url.pathname === '/api/settings') return sendJson(res, 200, { ok: true, settings: getSettings() });
   if (req.method === 'PUT' && url.pathname === '/api/settings') return sendJson(res, 200, { ok: true, settings: saveSettings(await readBody(req)) });
   if (req.method === 'GET' && url.pathname === '/api/secrets') return sendJson(res, 200, { ok: true, secrets: maskedSecrets({ reveal: url.searchParams.get('reveal') === '1' }) });
