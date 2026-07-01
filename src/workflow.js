@@ -14,8 +14,23 @@ function formatTime(tz = 'Asia/Shanghai') {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
 }
 
-function configuredImagePaths(settings = {}) {
-  return selectImagePaths(settings, getCounter(settings).count);
+async function configuredImagePaths(settings = {}, pack = null, generated = null) {
+  if (settings.enableImagePosts !== true) return [];
+  const paths = [];
+  if (settings.autoGenerateImage === true && pack && generated) {
+    try {
+      const { generateMarketCard } = require('./imageCard');
+      paths.push(await generateMarketCard(pack, generated.text));
+    } catch (err) {
+      console.error(`[media] auto image generation failed: ${err.message || err}`);
+    }
+  }
+  const maxCount = Math.max(1, Math.min(4, Number(settings.imagePathCount || 1)));
+  const remaining = Math.max(0, maxCount - paths.length);
+  if (remaining > 0) {
+    paths.push(...selectImagePaths({ ...settings, imagePathCount: remaining }, getCounter(settings).count));
+  }
+  return paths.slice(0, 4);
 }
 
 async function runOnce(mode = 'dry-run', meta = {}) {
@@ -33,7 +48,7 @@ async function runOnce(mode = 'dry-run', meta = {}) {
     if (banned) throw new Error(`banned_symbol_in_trio:${banned}`);
 
     generated = await generatePost(pack);
-    const imagePaths = configuredImagePaths(settings);
+    const imagePaths = await configuredImagePaths(settings, pack, generated);
 
     const livePublish = mode === 'publish' && settings.publishMode === 'live';
     if (!livePublish) {

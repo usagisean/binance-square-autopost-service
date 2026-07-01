@@ -43,6 +43,7 @@ const defaultSettings = {
   includeTradePlan: true,
   tradePlanMode: 'opinion',
   enableImagePosts: String(process.env.ENABLE_IMAGE_POSTS || '').toLowerCase() === 'true',
+  autoGenerateImage: String(process.env.AUTO_GENERATE_IMAGE || '').toLowerCase() === 'true',
   imagePostMode: process.env.IMAGE_POST_MODE || 'static',
   imagePathCount: Number(process.env.IMAGE_PATH_COUNT || 1),
   imagePaths: String(process.env.IMAGE_PATHS || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 4),
@@ -128,6 +129,7 @@ function saveSettings(patch) {
   next.includeTradePlan = next.includeTradePlan !== false;
   next.tradePlanMode = ['opinion', 'soft_opinion', 'conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
   next.enableImagePosts = next.enableImagePosts === true;
+  next.autoGenerateImage = next.autoGenerateImage === true;
   next.imagePostMode = ['off', 'static', 'random', 'rotate'].includes(String(next.imagePostMode || '').toLowerCase()) ? String(next.imagePostMode).toLowerCase() : defaultSettings.imagePostMode;
   next.imagePathCount = Math.max(1, Math.min(4, Number(next.imagePathCount || defaultSettings.imagePathCount)));
   if (!Array.isArray(next.imagePaths)) {

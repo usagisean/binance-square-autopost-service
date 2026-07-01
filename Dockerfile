@@ -5,8 +5,8 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8787
 
-# No npm dependencies are required today, but keep package metadata for scripts/versioning.
-COPY package.json ./
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
 COPY src ./src
 COPY web ./web
 COPY templates ./templates
