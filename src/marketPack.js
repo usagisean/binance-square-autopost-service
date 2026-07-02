@@ -408,6 +408,21 @@ function depthStats(depth) {
   const imbalance = total > 0 ? ((bidNotional - askNotional) / total) * 100 : 0;
   return { available: total > 0, bidNotional, askNotional, imbalance };
 }
+function compactDepthLevels(depth, limit = 12) {
+  const mapSide = rows => (Array.isArray(rows) ? rows : []).slice(0, limit).map(([p, q]) => {
+    const price = Number(p);
+    const qty = Number(q);
+    return { price, qty, notional: Number.isFinite(price) && Number.isFinite(qty) ? price * qty : 0 };
+  }).filter(x => Number.isFinite(x.price) && Number.isFinite(x.qty) && x.price > 0 && x.qty > 0);
+  return { bids: mapSide(depth?.bids), asks: mapSide(depth?.asks) };
+}
+function compactOiHistory(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map(row => ({
+    timestamp: Number(row.timestamp || row.time || 0),
+    sumOpenInterest: Number(row.sumOpenInterest || 0) || null,
+    sumOpenInterestValue: Number(row.sumOpenInterestValue || 0) || null
+  })).filter(x => x.sumOpenInterestValue || x.sumOpenInterest).slice(-32);
+}
 function spreadBps(book) {
   const bid = Number(book?.bidPrice || 0);
   const ask = Number(book?.askPrice || 0);
@@ -540,7 +555,7 @@ async function enrichOneFutures(asset) {
   const [premium, oi, oiHist, globalLs, topLs, takerLs, depth, book] = await Promise.all([
     safeJson(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${encodeURIComponent(id)}`),
     safeJson(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${encodeURIComponent(id)}`),
-    safeJson(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${encodeURIComponent(id)}&period=5m&limit=2`),
+    safeJson(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${encodeURIComponent(id)}&period=5m&limit=24`),
     safeJson(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${encodeURIComponent(id)}&period=5m&limit=1`),
     safeJson(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${encodeURIComponent(id)}&period=5m&limit=1`),
     safeJson(`https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=${encodeURIComponent(id)}&period=5m&limit=1`),
@@ -564,7 +579,9 @@ async function enrichOneFutures(asset) {
     globalLongShortRatio: Number(lastRow(globalLs)?.longShortRatio),
     topLongShortPositionRatio: Number(lastRow(topLs)?.longShortRatio),
     takerBuySellRatio: Number(lastRow(takerLs)?.buySellRatio),
+    openInterestHistory: compactOiHistory(oiHist),
     depth: depthStats(depth),
+    depthLevels: compactDepthLevels(depth),
     spreadBps: spreadBps(book)
   };
 }
@@ -578,6 +595,7 @@ async function enrichOneSpot(asset) {
     symbol: asset.symbol,
     spotSymbol: id,
     depth: depthStats(depth),
+    depthLevels: compactDepthLevels(depth),
     spreadBps: spreadBps(book)
   };
 }
@@ -662,6 +680,12 @@ async function enrichMarketIntel(pack, isFutures) {
   ]);
   const intel = { source: isFutures ? 'binance-futures-public' : 'binance-spot-public', generatedAt: new Date().toISOString(), symbols: Object.fromEntries(results) };
   pack.marketIntel = intel;
+  pack.chart = {
+    symbol: pairId(pack.trio.lead.symbol),
+    interval: '15m',
+    source: isFutures ? 'binance-futures-public' : 'binance-spot-public',
+    klines: leadKlines.slice(-64)
+  };
   appendIntelFacts(pack, intel, isFutures);
   const tradePlan = buildTradePlan(pack, intel, leadKlines, isFutures, getSettings());
   if (tradePlan) {
