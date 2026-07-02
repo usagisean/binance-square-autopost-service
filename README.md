@@ -513,7 +513,7 @@ images/test.png
 
 也可以直接在后台“图片素材”上传，图片会保存到 `data/images/`。
 
-如果勾选“自动生成行情配图”，服务会基于本轮 lead / peer / anchor 生成一张 1080x1080 的证据图，而不是把正文贴到图上。当前会在真实 15m K 线、盘口挂单墙、合约 OI/资金费率/多空比三类图里按数据可用性随机选择。默认关闭，不影响纯文本发布。`MAX_DAILY_POSTS` 默认 50，`AUTO_IMAGE_MAX_DAILY` / 后台“每日自动生成图上限”默认 20。LIVE 模式下，系统会按“当天剩余图片额度 / 当天剩余发帖额度”做随机分布；达到图片上限后不会停发，只会自动降级为原来的纯文本发帖。
+如果勾选“自动生成行情配图”，服务会基于本轮 lead / peer / anchor 生成一张 1080x1080 的证据图，而不是把正文贴到图上。当前默认生成交易软件截图风格的 15m K 线快照，包含真实 K 线、成交量、EMA20/EMA50、当前价和关键位，避免把正文贴成海报。盘口/合约/清算类图后续接入 Coinglass 或更权威图源后再启用。默认关闭，不影响纯文本发布。`MAX_DAILY_POSTS` 默认 50，`AUTO_IMAGE_MAX_DAILY` / 后台“每日自动生成图上限”默认 20。LIVE 模式下，系统会按“当天剩余图片额度 / 当天剩余发帖额度”做随机分布；达到图片上限后不会停发，只会自动降级为原来的纯文本发帖。
 
 实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 获取上传 URL，再 PUT 图片，轮询 `/image/imageStatus`，最后发布 `contentType: 1 + bodyTextOnly + imageList`。
 
