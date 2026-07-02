@@ -1,5 +1,6 @@
 const { getJson, request } = require('./httpClient');
 const { getSettings, saveMarketCache, loadMarketCache, getCounter, getIntelConfig } = require('./store');
+const { fetchCoinglassForPack, buildCoinglassPromptLines } = require('./coinglass');
 const {
   ASSET_UNIVERSE,
   CONTRACT_META,
@@ -669,6 +670,37 @@ async function appendConfiguredIntel(pack) {
     pack.facts.push(`新闻 RSS 摘要：${newsItems.slice(0, 4).map(x => `${x.source}: ${x.title}`).join('；')}`);
   }
 }
+
+async function appendCoinglassIntel(pack) {
+  let evidence;
+  try {
+    evidence = await fetchCoinglassForPack(pack);
+  } catch (err) {
+    evidence = { ok: false, status: 'error', reason: err.message || String(err) };
+  }
+  pack.coinglass = evidence;
+  pack.externalIntel = {
+    ...(pack.externalIntel || {}),
+    coinglass: {
+      ok: !!evidence?.ok,
+      status: evidence?.status || 'unknown',
+      source: evidence?.source || 'coinglass-v4',
+      exchange: evidence?.exchange,
+      pair: evidence?.pair,
+      hasHeatmap: !!evidence?.heatmap?.available,
+      hasLiquidation: !!evidence?.liquidation?.available,
+      hasOrderbook: !!evidence?.orderbookAskBids?.available,
+      hasOpenInterest: !!evidence?.openInterest?.available,
+      hasLongShort: !!evidence?.longShort?.available,
+      reason: evidence?.reason || ''
+    }
+  };
+  if (!evidence?.ok) return;
+  const lines = buildCoinglassPromptLines(evidence);
+  if (lines.facts.length) pack.facts.push(...lines.facts);
+  if (lines.takeaways.length) pack.takeaways.push(...lines.takeaways);
+}
+
 async function enrichMarketIntel(pack, isFutures) {
   const assets = [pack.trio.lead, pack.trio.peer, pack.trio.anchor];
   const [results, leadKlines] = await Promise.all([
@@ -695,6 +727,7 @@ async function enrichMarketIntel(pack, isFutures) {
     // kept copying "条件计划/计划偏多/失效" phrasing into every post.
   }
   await appendConfiguredIntel(pack);
+  await appendCoinglassIntel(pack);
   return pack;
 }
 

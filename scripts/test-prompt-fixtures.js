@@ -4,6 +4,8 @@ const path = require('path');
 const { renderTemplate, validatePostText, selectPostAngle } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
+const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
+const { buildSvg, chooseEvidenceType } = require('../src/imageCard');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -133,6 +135,39 @@ function basePack(extra = {}) {
   assert(resolveImagePath('images/test.png').endsWith('/data/images/test.png'));
   assert.deepStrictEqual(selectImagePaths({ enableImagePosts: false, imagePaths: ['images/a.png'] }), []);
   assert.deepStrictEqual(selectImagePaths({ enableImagePosts: true, imagePostMode: 'static', imagePathCount: 1, imagePaths: ['images/a.png', 'images/b.png'] }), ['images/a.png']);
+})();
+
+(function coinglassEvidenceSummariesAndImageMode() {
+  assert.strictEqual(pairSymbol('PEPE'), '1000PEPEUSDT');
+  const evidence = summarizeCoinglassEvidence({
+    base: 'BTC',
+    pair: 'BTCUSDT',
+    results: [
+      {
+        name: 'heatmap',
+        ok: true,
+        data: {
+          y_axis: [99, 100, 101, 102, 103],
+          liquidation_leverage_data: Array.from({ length: 18 }, (_, i) => [i % 6, i % 5, 80000 + i * 25000]),
+          price_candlesticks: [
+            [1722676500, '100', '101', '99', '100.5', '1000000'],
+            [1722677400, '100.5', '102', '100', '101.2', '1200000'],
+            [1722678300, '101.2', '102.4', '100.7', '101.8', '900000']
+          ]
+        }
+      },
+      { name: 'liquidation', ok: true, data: [{ time: 1, long_liquidation_usd: '10', short_liquidation_usd: '20' }] },
+      { name: 'orderbookAskBids', ok: true, data: [{ time: 1, bids_usd: 100, asks_usd: 80 }] },
+      { name: 'openInterest', ok: true, data: [{ time: 1, close: 100 }, { time: 2, close: 110 }] },
+      { name: 'longShort', ok: true, data: [{ time: 1, global_account_long_percent: 55, global_account_short_percent: 45, global_account_long_short_ratio: 1.22 }] }
+    ]
+  });
+  assert.strictEqual(evidence.ok, true);
+  assert.strictEqual(evidence.heatmap.available, true);
+  assert(evidence.heatmap.summary.topAbove);
+  const pack = basePack({ coinglass: evidence });
+  assert.strictEqual(chooseEvidenceType(pack), 'coinglass_liquidation_heatmap');
+  assert(buildSvg(pack).includes('LIQUIDATION HEATMAP'));
 })();
 
 console.log('prompt fixture tests passed');

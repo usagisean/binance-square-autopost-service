@@ -143,13 +143,13 @@
   <section id="tab-intel" class="tab">
     <section class="card">
       <h2>情报源配置</h2>
-      <p class="muted hint">保存到 VPS 的 <code>data/intel_config.json</code>，不提交 Git。保存后下一轮生成直接读取，属于配置热更新。当前版本会拉取 RSS 标题并接入人工备注；Coinglass / 链上 Key 先保存为后续数据接口使用。</p>
+      <p class="muted hint">保存到 VPS 的 <code>data/intel_config.json</code>，不提交 Git。保存后下一轮生成直接读取，属于配置热更新。启用后会拉取 RSS / 人工备注；填写 Coinglass Key 后会优先尝试清算热力图、爆仓、深度、OI、多空比作为证据和配图，接口不可用会自动回退到现有 K 线图，不影响发帖。</p>
       <label><input type="checkbox" id="intelEnabled">启用情报源</label>
       <label>新闻 RSS URLs（每行一个）</label><textarea id="newsRssUrls" class="small-textarea" placeholder="https://example.com/rss"></textarea>
       <label>KOL 手动源（每行一个，支持 @handle / URL / 备注）</label><textarea id="kolSources" class="small-textarea" placeholder="@example_kol 或 https://x.com/example"></textarea>
       <label>宏观 / 地缘 / 名人效应手动备注（会进入本轮 facts，必须真实填写）</label><textarea id="macroNotes" class="small-textarea" placeholder="例如：今晚关注 FOMC / 原油异动 / 美股风险偏好...；留空则不写入正文。"></textarea>
       <div class="grid2">
-        <div><label>Coinglass API Key（留空不修改）</label><input id="coinglassApiKey" type="password" autocomplete="off" placeholder="Coinglass key"></div>
+        <div><label>Coinglass API Key（留空不修改）</label><input id="coinglassApiKey" type="password" autocomplete="off" placeholder="CG-API-KEY"></div>
         <div><label>链上 API Keys JSON（可选，留空不修改）</label><textarea id="onchainApiKeys" class="small-textarea" placeholder='{"arkham":"...","nansen":"..."}'></textarea></div>
       </div>
       <div class="grid2"><div><label>最多新闻条数</label><input id="maxNewsItems" type="number" min="0" max="30" value="8"></div><div><label>最多 KOL 条数</label><input id="maxKolItems" type="number" min="0" max="30" value="8"></div></div>

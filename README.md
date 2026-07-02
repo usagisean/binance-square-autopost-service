@@ -513,7 +513,19 @@ images/test.png
 
 也可以直接在后台“图片素材”上传，图片会保存到 `data/images/`。
 
-如果勾选“自动生成行情配图”，服务会基于本轮 lead / peer / anchor 生成一张 1080x1080 的证据图，而不是把正文贴到图上。当前默认生成交易软件截图风格的 15m K 线快照，包含真实 K 线、成交量、EMA20/EMA50、当前价和关键位，避免把正文贴成海报。盘口/合约/清算类图后续接入 Coinglass 或更权威图源后再启用。默认关闭，不影响纯文本发布。`MAX_DAILY_POSTS` 默认 50，`AUTO_IMAGE_MAX_DAILY` / 后台“每日自动生成图上限”默认 20。LIVE 模式下，系统会按“当天剩余图片额度 / 当天剩余发帖额度”做随机分布；达到图片上限后不会停发，只会自动降级为原来的纯文本发帖。
+如果勾选“自动生成行情配图”，服务会基于本轮 lead / peer / anchor 生成一张证据图，而不是把正文贴到图上。默认生成交易软件截图风格的 15m K 线快照，包含真实 K 线、成交量、EMA20/EMA50、当前价和关键位，避免把正文贴成海报。默认关闭，不影响纯文本发布。`MAX_DAILY_POSTS` 默认 50，`AUTO_IMAGE_MAX_DAILY` / 后台“每日自动生成图上限”默认 20。LIVE 模式下，系统会按“当天剩余图片额度 / 当天剩余发帖额度”做随机分布；达到图片上限后不会停发，只会自动降级为原来的纯文本发帖。
+
+### Coinglass 证据图（可选）
+
+在后台“情报源配置”里启用情报源，并填写 Coinglass API Key 后，服务会在每轮生成 market pack 时优先尝试 CoinGlass API v4：
+
+- `/api/futures/liquidation/heatmap/model1`：清算热力图，优先用于图文帖；
+- `/api/futures/liquidation/history`：近 24h 多/空爆仓；
+- `/api/futures/orderbook/ask-bids-history`：±1% 买卖盘深度；
+- `/api/futures/open-interest/history`：OI 变化；
+- `/api/futures/global-long-short-account-ratio/history`：账户多空比。
+
+如果 Coinglass 没配 Key、情报源未启用、套餐不支持某个接口，或接口超时，发帖不会失败；系统会自动回退到原来的 15m K 线图 / 纯文本。Coinglass 返回的数据只作为 `facts` 与配图证据，不会伪造新闻、链上或 KOL 信息。
 
 实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 获取上传 URL，再 PUT 图片，轮询 `/image/imageStatus`，最后发布 `contentType: 1 + bodyTextOnly + imageList`。
 

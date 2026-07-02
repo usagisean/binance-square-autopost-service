@@ -101,6 +101,173 @@ function chartRows(pack = {}) {
   });
 }
 
+function hasCoinglassHeatmap(pack = {}) {
+  return pack.coinglass?.ok === true
+    && pack.coinglass?.heatmap?.available === true
+    && Array.isArray(pack.coinglass.heatmap.cells)
+    && pack.coinglass.heatmap.cells.length > 12
+    && Array.isArray(pack.coinglass.heatmap.yAxis)
+    && pack.coinglass.heatmap.yAxis.length > 4;
+}
+function hasCoinglassPanel(pack = {}) {
+  const cg = pack.coinglass || {};
+  return cg.ok === true && (
+    cg.liquidation?.available === true
+    || cg.orderbookAskBids?.available === true
+    || cg.openInterest?.available === true
+    || cg.longShort?.available === true
+  );
+}
+function heatColor(amount, maxAmount) {
+  const t = Math.max(0, Math.min(1, Math.sqrt((Number(amount) || 0) / (Number(maxAmount) || 1))));
+  if (t > 0.72) return { fill: RED, opacity: 0.2 + t * 0.76 };
+  if (t > 0.38) return { fill: YELLOW, opacity: 0.12 + t * 0.78 };
+  return { fill: '#2de2a6', opacity: 0.08 + t * 0.56 };
+}
+function coinglassCandles(pack = {}) {
+  return (pack.coinglass?.heatmap?.priceCandlesticks || []).filter(k => Number.isFinite(Number(k.close))).slice(-120);
+}
+function buildLinePathFromRows(rows, x, y, w, h, min, max) {
+  return rows.map((k, i) => {
+    const v = Number(k.close);
+    if (!Number.isFinite(v)) return '';
+    return `${i ? 'L' : 'M'}${xScale(i, rows.length, x, w).toFixed(1)},${yScale(v, min, max, y, h).toFixed(1)}`;
+  }).filter(Boolean).join(' ');
+}
+function buildCoinglassHeatmapSvg(pack) {
+  const lead = pack.trio?.lead || {};
+  const peer = pack.trio?.peer || {};
+  const anchor = pack.trio?.anchor || {};
+  const cg = pack.coinglass || {};
+  const hm = cg.heatmap || {};
+  const summary = hm.summary || {};
+  const yAxis = (hm.yAxis || []).map(Number).filter(Number.isFinite);
+  const cells = (hm.cells || []).filter(c => Number.isFinite(Number(c.price)) && Number.isFinite(Number(c.amountUsd))).slice(0, 700);
+  const candles = coinglassCandles(pack);
+  const plot = { x: 62, y: 110, w: 880, h: 500 };
+  const side = { x: 972, y: 110, w: 242, h: 500 };
+  const prices = [...yAxis, ...candles.flatMap(k => [k.high, k.low, k.close].map(Number).filter(Number.isFinite))];
+  const { min, max } = minmax(prices);
+  const maxAmount = Math.max(1, ...cells.map(c => Number(c.amountUsd || 0)));
+  const maxX = Math.max(1, ...cells.map(c => Number(c.xIndex || 0)), candles.length - 1);
+  const cellW = Math.max(3, plot.w / (maxX + 1) * 0.92);
+  const avgLevelH = yAxis.length > 1 ? plot.h / yAxis.length : 8;
+  const cellH = Math.max(3, Math.min(15, avgLevelH * 1.8));
+  const grid = [0, 0.25, 0.5, 0.75, 1].map(t => {
+    const yy = plot.y + t * plot.h;
+    const val = max - t * (max - min);
+    return `<line x1="${plot.x}" y1="${yy}" x2="${plot.x + plot.w}" y2="${yy}" stroke="${GRID}" stroke-width="1" opacity="0.72"/><text x="${plot.x + plot.w + 10}" y="${yy + 5}" font-size="16" fill="${MUTED}">${esc(price(val))}</text>`;
+  }).join('');
+  const rects = cells.map(c => {
+    const x = plot.x + (Number(c.xIndex || 0) / maxX) * plot.w;
+    const y = yScale(c.price, min, max, plot.y, plot.h);
+    const col = heatColor(c.amountUsd, maxAmount);
+    return `<rect x="${(x - cellW / 2).toFixed(1)}" y="${(y - cellH / 2).toFixed(1)}" width="${cellW.toFixed(1)}" height="${cellH.toFixed(1)}" rx="2" fill="${col.fill}" opacity="${col.opacity.toFixed(2)}"/>`;
+  }).join('\n');
+  const line = candles.length >= 2 ? buildLinePathFromRows(candles, plot.x, plot.y, plot.w, plot.h, min, max) : '';
+  const lastPrice = Number(summary.lastPrice || candles[candles.length - 1]?.close || lead.price || 0);
+  const lastY = Number.isFinite(lastPrice) && lastPrice > 0 ? yScale(lastPrice, min, max, plot.y, plot.h) : null;
+  const topLevels = (summary.topLevels || []).slice(0, 5);
+  const topRows = topLevels.map((lvl, idx) => {
+    const sideText = lvl.side === 'above' ? '上方' : lvl.side === 'below' ? '下方' : '附近';
+    const color = lvl.side === 'above' ? RED : GREEN;
+    const dist = Number.isFinite(Number(lvl.distancePct)) ? `${Number(lvl.distancePct) > 0 ? '+' : ''}${Number(lvl.distancePct).toFixed(2)}%` : '--';
+    return `<text x="${side.x + 18}" y="${side.y + 128 + idx * 46}" font-size="18" fill="${TEXT}" font-weight="800">${idx + 1}. ${esc(price(lvl.price))}</text><text x="${side.x + 126}" y="${side.y + 128 + idx * 46}" font-size="15" fill="${color}" font-weight="800">${esc(sideText)} ${esc(dist)}</text><text x="${side.x + 18}" y="${side.y + 150 + idx * 46}" font-size="15" fill="${MUTED}">${esc(usd(lvl.amountUsd))}</text>`;
+  }).join('');
+  const above = summary.topAbove ? `${price(summary.topAbove.price)} · ${usd(summary.topAbove.amountUsd)}` : '--';
+  const below = summary.topBelow ? `${price(summary.topBelow.price)} · ${usd(summary.topBelow.amountUsd)}` : '--';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <style>text { font-family: "Noto Sans CJK SC", "Noto Sans CJK", "DejaVu Sans", Arial, sans-serif; }</style>
+  <rect width="${W}" height="${H}" fill="${BG}"/>
+  <rect x="28" y="28" width="1224" height="664" rx="22" fill="${PANEL}" stroke="#1f2937"/>
+  <text x="58" y="70" font-size="28" fill="${TEXT}" font-weight="900">${esc(cg.pair || `${lead.symbol}USDT`)}</text>
+  <text x="245" y="70" font-size="18" fill="${YELLOW}" font-weight="900">LIQUIDATION HEATMAP</text>
+  <text x="58" y="96" font-size="16" fill="${MUTED}" font-weight="700">CoinGlass · ${esc(cg.exchange || 'Binance')} · 24H · data evidence</text>
+  <text x="902" y="70" font-size="28" fill="${TEXT}" font-weight="900">${esc(price(lastPrice))}</text>
+  <text x="1018" y="70" font-size="17" fill="${MUTED}" font-weight="800">热区合计 ${esc(usd(summary.totalUsd))}</text>
+  <rect x="${plot.x}" y="${plot.y}" width="${plot.w}" height="${plot.h}" fill="#090d12" stroke="#243041"/>
+  ${grid}
+  ${rects}
+  ${line ? `<path d="${line}" fill="none" stroke="#eef2ff" stroke-width="2.6" opacity="0.92"/><path d="${line}" fill="none" stroke="#0b0e11" stroke-width="5" opacity="0.24"/>` : ''}
+  ${lastY != null ? `<line x1="${plot.x}" y1="${lastY}" x2="${plot.x + plot.w}" y2="${lastY}" stroke="${BLUE}" stroke-width="1.8" stroke-dasharray="6 6"/><rect x="${plot.x + plot.w - 92}" y="${lastY - 15}" width="88" height="30" rx="5" fill="${BLUE}"/><text x="${plot.x + plot.w - 84}" y="${lastY + 6}" font-size="15" fill="#06121f" font-weight="900">${esc(price(lastPrice))}</text>` : ''}
+  <rect x="${side.x}" y="${side.y}" width="${side.w}" height="${side.h}" rx="14" fill="#0b0f16" stroke="#273244"/>
+  <text x="${side.x + 18}" y="${side.y + 36}" font-size="18" fill="${MUTED}" font-weight="900">TOP HEAT ZONES</text>
+  <text x="${side.x + 18}" y="${side.y + 70}" font-size="15" fill="${RED}" font-weight="900">上方：${esc(above)}</text>
+  <text x="${side.x + 18}" y="${side.y + 96}" font-size="15" fill="${GREEN}" font-weight="900">下方：${esc(below)}</text>
+  ${topRows}
+  <text x="${side.x + 18}" y="${side.y + side.h - 42}" font-size="14" fill="${MUTED}">cells ${esc(String(summary.cellCount || cells.length))} · max ${esc(usd(summary.maxCellUsd))}</text>
+  <text x="${side.x + 18}" y="${side.y + side.h - 18}" font-size="13" fill="#58606d">清算热区只表示潜在流动性密集处</text>
+  <text x="64" y="654" font-size="17" fill="${MUTED}" font-weight="800">$${esc(lead.symbol || '--')} / $${esc(peer.symbol || '--')} / $${esc(anchor.symbol || '--')}</text>
+  <text x="988" y="654" font-size="16" fill="#58606d" font-weight="800">source: CoinGlass API v4</text>
+</svg>`;
+}
+
+function sparkline(rows = [], key = 'close', x, y, w, h, stroke = YELLOW) {
+  const vals = rows.map(r => Number(r?.[key])).filter(Number.isFinite);
+  if (vals.length < 2) return '';
+  const { min, max } = minmax(vals);
+  const d = rows.map((r, i) => {
+    const v = Number(r?.[key]);
+    if (!Number.isFinite(v)) return '';
+    return `${i ? 'L' : 'M'}${xScale(i, rows.length, x, w).toFixed(1)},${yScale(v, min, max, y, h).toFixed(1)}`;
+  }).filter(Boolean).join(' ');
+  return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="3" opacity="0.95"/>`;
+}
+function barPair(x, y, w, h, leftValue, rightValue, leftColor, rightColor) {
+  const l = Math.max(0, Number(leftValue) || 0);
+  const r = Math.max(0, Number(rightValue) || 0);
+  const total = Math.max(1, l + r);
+  const lw = w * l / total;
+  const rw = w - lw;
+  return `<rect x="${x}" y="${y}" width="${lw}" height="${h}" rx="7" fill="${leftColor}" opacity="0.88"/><rect x="${x + lw}" y="${y}" width="${rw}" height="${h}" rx="7" fill="${rightColor}" opacity="0.88"/>`;
+}
+function panel(x, y, w, h, title, body) {
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="#0b0f16" stroke="#273244"/><text x="${x + 22}" y="${y + 38}" font-size="18" fill="${MUTED}" font-weight="900">${esc(title)}</text>${body}`;
+}
+function buildCoinglassPanelSvg(pack) {
+  const lead = pack.trio?.lead || {};
+  const peer = pack.trio?.peer || {};
+  const anchor = pack.trio?.anchor || {};
+  const cg = pack.coinglass || {};
+  const liq = cg.liquidation || {};
+  const ob = cg.orderbookAskBids || {};
+  const oi = cg.openInterest || {};
+  const ls = cg.longShort || {};
+  const pair = cg.pair || `${lead.symbol || 'MARKET'}USDT`;
+  const liqPanel = panel(52, 132, 560, 198, '24H LIQUIDATION', `
+    ${liq.available ? barPair(80, 205, 504, 28, liq.longLiquidationUsd, liq.shortLiquidationUsd, RED, GREEN) : `<text x="80" y="222" font-size="22" fill="${MUTED}">unavailable</text>`}
+    <text x="80" y="178" font-size="28" fill="${TEXT}" font-weight="900">${esc(usd(liq.longLiquidationUsd))}</text><text x="300" y="178" font-size="16" fill="${MUTED}">long liq</text>
+    <text x="80" y="270" font-size="28" fill="${TEXT}" font-weight="900">${esc(usd(liq.shortLiquidationUsd))}</text><text x="300" y="270" font-size="16" fill="${MUTED}">short liq</text>
+    <text x="80" y="304" font-size="16" fill="${MUTED}" font-weight="800">total ${esc(usd(liq.totalUsd))}</text>`);
+  const orderPanel = panel(668, 132, 560, 198, '±1% ORDERBOOK DEPTH', `
+    ${ob.available && ob.latest ? barPair(696, 205, 504, 28, ob.latest.bidsUsd, ob.latest.asksUsd, GREEN, RED) : `<text x="696" y="222" font-size="22" fill="${MUTED}">unavailable</text>`}
+    <text x="696" y="178" font-size="28" fill="${TEXT}" font-weight="900">${esc(usd(ob.latest?.bidsUsd))}</text><text x="916" y="178" font-size="16" fill="${MUTED}">bids</text>
+    <text x="696" y="270" font-size="28" fill="${TEXT}" font-weight="900">${esc(usd(ob.latest?.asksUsd))}</text><text x="916" y="270" font-size="16" fill="${MUTED}">asks</text>
+    <text x="696" y="304" font-size="16" fill="${ob.imbalancePct >= 0 ? GREEN : RED}" font-weight="900">imbalance ${esc(pct(ob.imbalancePct))}</text>`);
+  const oiPanel = panel(52, 370, 560, 220, 'OPEN INTEREST', `
+    <text x="80" y="425" font-size="30" fill="${oi.changePct >= 0 ? GREEN : RED}" font-weight="900">${esc(pct(oi.changePct))}</text>
+    <text x="210" y="425" font-size="17" fill="${MUTED}" font-weight="800">last 24 samples</text>
+    ${oi.available ? sparkline(oi.rows || [], 'close', 80, 456, 504, 92, YELLOW) : `<text x="80" y="500" font-size="22" fill="${MUTED}">unavailable</text>`}
+    <text x="80" y="565" font-size="16" fill="${MUTED}">latest ${esc(usd(oi.latest?.close))}</text>`);
+  const ratioPanel = panel(668, 370, 560, 220, 'GLOBAL ACCOUNT RATIO', `
+    <text x="696" y="426" font-size="36" fill="${TEXT}" font-weight="900">${esc(Number(ls.latest?.ratio || 0).toFixed(2))}</text><text x="796" y="426" font-size="17" fill="${MUTED}">long/short</text>
+    ${ls.latest ? barPair(696, 468, 504, 30, ls.latest.longPercent, ls.latest.shortPercent, GREEN, RED) : `<text x="696" y="486" font-size="22" fill="${MUTED}">unavailable</text>`}
+    <text x="696" y="530" font-size="24" fill="${GREEN}" font-weight="900">${esc(Number(ls.latest?.longPercent || 0).toFixed(1))}% long</text>
+    <text x="920" y="530" font-size="24" fill="${RED}" font-weight="900">${esc(Number(ls.latest?.shortPercent || 0).toFixed(1))}% short</text>
+    <text x="696" y="565" font-size="16" fill="${MUTED}">source: CoinGlass API v4</text>`);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <style>text { font-family: "Noto Sans CJK SC", "Noto Sans CJK", "DejaVu Sans", Arial, sans-serif; }</style>
+  <rect width="${W}" height="${H}" fill="${BG}"/><rect x="28" y="28" width="1224" height="664" rx="22" fill="${PANEL}" stroke="#1f2937"/>
+  <text x="58" y="72" font-size="30" fill="${TEXT}" font-weight="900">${esc(pair)}</text>
+  <text x="258" y="72" font-size="18" fill="${YELLOW}" font-weight="900">COINGLASS DERIVATIVES PANEL</text>
+  <text x="58" y="101" font-size="16" fill="${MUTED}" font-weight="700">${esc(cg.exchange || 'Binance')} · liquidation / depth / OI / long-short</text>
+  ${liqPanel}${orderPanel}${oiPanel}${ratioPanel}
+  <text x="64" y="654" font-size="17" fill="${MUTED}" font-weight="800">$${esc(lead.symbol || '--')} / $${esc(peer.symbol || '--')} / $${esc(anchor.symbol || '--')}</text>
+  <text x="956" y="654" font-size="16" fill="#58606d" font-weight="800">data-driven evidence card</text>
+</svg>`;
+}
+
 function buildTradingScreenshotSvg(pack) {
   const lead = pack.trio?.lead || {};
   const peer = pack.trio?.peer || {};
@@ -164,18 +331,26 @@ function buildTradingScreenshotSvg(pack) {
   ${ema20Path ? `<path d="${ema20Path}" fill="none" stroke="${YELLOW}" stroke-width="2.2" opacity="0.95"/>` : ''}${ema50Path ? `<path d="${ema50Path}" fill="none" stroke="${BLUE}" stroke-width="2" opacity="0.88"/>` : ''}
   ${keyVisible ? `<line x1="${chart.x}" y1="${keyY}" x2="${chart.x + chart.w}" y2="${keyY}" stroke="${PURPLE}" stroke-width="2" stroke-dasharray="8 6"/><rect x="${chart.x + chart.w - 96}" y="${keyY - 17}" width="92" height="28" rx="5" fill="${PURPLE}"/><text x="${chart.x + chart.w - 88}" y="${keyY + 3}" font-size="15" fill="#0b0e11" font-weight="900">KEY ${esc(keyText)}</text>` : ''}
   <line x1="${chart.x}" y1="${lastY}" x2="${chart.x + chart.w}" y2="${lastY}" stroke="${directionColor}" stroke-width="1.4" stroke-dasharray="5 5" opacity="0.85"/><rect x="${chart.x + chart.w + 6}" y="${lastY - 15}" width="82" height="30" rx="5" fill="${directionColor}"/><text x="${chart.x + chart.w + 12}" y="${lastY + 6}" font-size="15" fill="#0b0e11" font-weight="900">${esc(price(lastPrice))}</text>
-  <text x="72" y="674" font-size="17" fill="${YELLOW}" font-weight="800">EMA20</text><text x="142" y="674" font-size="17" fill="${BLUE}" font-weight="800">EMA50</text><text x="235" y="674" font-size="17" fill="${MUTED}" font-weight="700">Volume · ${esc(usd(lead.volume24h))}</text><text x="760" y="674" font-size="18" fill="${MUTED}" font-weight="800">$${esc(lead.symbol || '--')} $${esc(peer.symbol || '--')} $${esc(anchor.symbol || '--')}</text><text x="1038" y="674" font-size="16" fill="#58606d" font-weight="700">auto snapshot</text>
+  <text x="72" y="674" font-size="17" fill="${YELLOW}" font-weight="800">EMA20</text><text x="142" y="674" font-size="17" fill="${BLUE}" font-weight="800">EMA50</text><text x="235" y="674" font-size="17" fill="${MUTED}" font-weight="700">Volume · ${esc(usd(lead.volume24h))}</text><text x="760" y="674" font-size="18" fill="${MUTED}" font-weight="800">$${esc(lead.symbol || '--')} $${esc(peer.symbol || '--')} $${esc(anchor.symbol || '--')}</text><text x="1038" y="674" font-size="16" fill="#58606d" font-weight="700">chart snapshot</text>
 </svg>`;
 }
 
-function buildSvg(pack) { return buildTradingScreenshotSvg(pack); }
-function chooseEvidenceType() { return 'chart_snapshot'; }
+function buildSvg(pack) {
+  if (hasCoinglassHeatmap(pack)) return buildCoinglassHeatmapSvg(pack);
+  if (hasCoinglassPanel(pack)) return buildCoinglassPanelSvg(pack);
+  return buildTradingScreenshotSvg(pack);
+}
+function chooseEvidenceType(pack = {}) {
+  if (hasCoinglassHeatmap(pack)) return 'coinglass_liquidation_heatmap';
+  if (hasCoinglassPanel(pack)) return 'coinglass_derivatives_panel';
+  return 'chart_snapshot';
+}
 async function generateMarketCard(pack, postText = '', options = {}) {
   const dir = options.dir || path.join(DATA_DIR, 'generated-images');
   fs.mkdirSync(dir, { recursive: true });
   const lead = pack.trio?.lead?.symbol || 'MARKET';
   const ts = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-  const file = path.join(dir, `${ts}-${lead}-chart.png`);
+  const file = path.join(dir, `${ts}-${lead}-${chooseEvidenceType(pack)}.png`);
   await sharp(Buffer.from(buildSvg(pack, postText, options))).png({ compressionLevel: 9 }).toFile(file);
   return file;
 }
