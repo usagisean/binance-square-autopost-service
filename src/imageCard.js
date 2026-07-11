@@ -118,6 +118,37 @@ function hasCoinglassPanel(pack = {}) {
     || cg.longShort?.available === true
   );
 }
+function hasPublicDerivativesPanel(pack = {}) {
+  return pack.publicDerivatives?.ok === true && Boolean(pack.publicDerivatives?.symbols?.[pack.trio?.lead?.symbol]);
+}
+function buildPublicDerivativesPanelSvg(pack = {}) {
+  const lead = pack.trio?.lead || {};
+  const peer = pack.trio?.peer || {};
+  const anchor = pack.trio?.anchor || {};
+  const d = pack.publicDerivatives?.symbols?.[lead.symbol] || {};
+  const funding = Number(d.fundingRateHourly || 0) * 100;
+  const premium = Number(d.premium || 0) * 100;
+  const oi = Number(d.openInterestUsd || 0);
+  const volume = Number(d.volume24hUsd || 0);
+  const oiRatio = volume > 0 ? oi / volume : 0;
+  const fundingColor = funding > 0 ? GREEN : funding < 0 ? RED : TEXT;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <style>text { font-family: "Noto Sans CJK SC", "Noto Sans CJK", "DejaVu Sans", Arial, sans-serif; }</style>
+  <rect width="${W}" height="${H}" fill="${BG}"/><rect x="28" y="28" width="1224" height="664" rx="22" fill="${PANEL}" stroke="#273244"/>
+  <text x="62" y="82" font-size="34" fill="${TEXT}" font-weight="900">${esc(lead.symbol)} PERP</text>
+  <text x="320" y="82" font-size="19" fill="${YELLOW}" font-weight="900">DERIVATIVES SNAPSHOT</text>
+  <text x="62" y="114" font-size="16" fill="${MUTED}">Hyperliquid public API · cross-exchange evidence · ${esc(new Date().toISOString().slice(0, 16).replace('T', ' '))} UTC</text>
+  <rect x="62" y="150" width="356" height="190" rx="18" fill="#0b0f16" stroke="#273244"/><text x="88" y="190" font-size="18" fill="${MUTED}" font-weight="800">MARK / ORACLE</text><text x="88" y="246" font-size="36" fill="${TEXT}" font-weight="900">${esc(price(d.markPrice))}</text><text x="88" y="292" font-size="18" fill="${MUTED}">oracle ${esc(price(d.oraclePrice))} · premium <tspan fill="${fundingColor}">${esc(pct(premium))}</tspan></text>
+  <rect x="442" y="150" width="356" height="190" rx="18" fill="#0b0f16" stroke="#273244"/><text x="468" y="190" font-size="18" fill="${MUTED}" font-weight="800">OPEN INTEREST</text><text x="468" y="246" font-size="36" fill="${BLUE}" font-weight="900">${esc(usd(oi))}</text><text x="468" y="292" font-size="18" fill="${MUTED}">OI / 24h volume ${esc(oiRatio.toFixed(2))}x</text>
+  <rect x="822" y="150" width="356" height="190" rx="18" fill="#0b0f16" stroke="#273244"/><text x="848" y="190" font-size="18" fill="${MUTED}" font-weight="800">HOURLY FUNDING</text><text x="848" y="246" font-size="36" fill="${fundingColor}" font-weight="900">${esc(pct(funding, 4))}</text><text x="848" y="292" font-size="18" fill="${MUTED}">24h perp volume ${esc(usd(volume))}</text>
+  <rect x="62" y="374" width="1116" height="214" rx="18" fill="#0b0f16" stroke="#273244"/>
+  <text x="88" y="420" font-size="20" fill="${YELLOW}" font-weight="900">WHAT THIS PROVES</text>
+  <text x="88" y="472" font-size="25" fill="${TEXT}" font-weight="800">${esc(pack.marketEvent?.claim || `${lead.symbol} 永续仓位与资金成本快照`)}</text>
+  <text x="88" y="520" font-size="18" fill="${MUTED}">这是一家交易所的公开永续数据，用于交叉验证杠杆情绪；不代表 Binance 全市场，也不是清算热力图。</text>
+  <text x="88" y="558" font-size="17" fill="${MUTED}">$${esc(lead.symbol)} · $${esc(peer.symbol)} · $${esc(anchor.symbol)} · publish score ${esc(String(pack.publishScore ?? '--'))}/100</text>
+  <text x="62" y="650" font-size="15" fill="#58606d">No paid API · no estimated liquidation zones · source explicitly labeled</text>
+  </svg>`;
+}
 function heatColor(amount, maxAmount) {
   const t = Math.max(0, Math.min(1, Math.sqrt((Number(amount) || 0) / (Number(maxAmount) || 1))));
   if (t > 0.72) return { fill: RED, opacity: 0.2 + t * 0.76 };
@@ -338,11 +369,13 @@ function buildTradingScreenshotSvg(pack) {
 function buildSvg(pack) {
   if (hasCoinglassHeatmap(pack)) return buildCoinglassHeatmapSvg(pack);
   if (hasCoinglassPanel(pack)) return buildCoinglassPanelSvg(pack);
+  if (hasPublicDerivativesPanel(pack)) return buildPublicDerivativesPanelSvg(pack);
   return buildTradingScreenshotSvg(pack);
 }
 function chooseEvidenceType(pack = {}) {
   if (hasCoinglassHeatmap(pack)) return 'coinglass_liquidation_heatmap';
   if (hasCoinglassPanel(pack)) return 'coinglass_derivatives_panel';
+  if (hasPublicDerivativesPanel(pack)) return 'public_derivatives_panel';
   return 'chart_snapshot';
 }
 async function generateMarketCard(pack, postText = '', options = {}) {

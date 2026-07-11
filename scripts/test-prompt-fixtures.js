@@ -7,6 +7,7 @@ const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
 const { buildSvg, chooseEvidenceType } = require('../src/imageCard');
 const { deriveMarketEvent, attachMarketQuality } = require('../src/marketQuality');
+const { normalizeHyperliquid } = require('../src/publicDerivatives');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -105,6 +106,19 @@ function basePack(extra = {}) {
   attachMarketQuality(pack);
   assert.strictEqual(pack.publishScore, pack.marketEvent.score);
   assert.doesNotThrow(() => JSON.stringify(pack.marketEvent));
+})();
+
+(function freePublicDerivativesAreStructured() {
+  const rows = normalizeHyperliquid({ universe: [{ name: 'RENDER', maxLeverage: 10 }] }, [{ markPx: '7.2', oraclePx: '7.19', openInterest: '100000', funding: '0.00005', premium: '0.0002', dayNtlVlm: '9000000' }]);
+  assert.strictEqual(rows.RENDER.openInterestUsd, 720000);
+  assert.strictEqual(rows.RENDER.fundingRateHourly, 0.00005);
+  const pack = basePack({ publicDerivatives: { ok: true, symbols: rows } });
+  const event = deriveMarketEvent(pack);
+  assert.strictEqual(event.evidenceAvailable.publicDerivatives, true);
+  assert.strictEqual(event.imageType, 'public_derivatives_panel');
+  pack.marketEvent = event; pack.publishScore = event.score;
+  assert.strictEqual(chooseEvidenceType(pack), 'public_derivatives_panel');
+  assert(buildSvg(pack).includes('DERIVATIVES SNAPSHOT'));
 })();
 
 (function bannedPhraseValidation() {

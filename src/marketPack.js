@@ -2,6 +2,7 @@ const { getJson, request } = require('./httpClient');
 const { getSettings, saveMarketCache, loadMarketCache, getCounter, getIntelConfig } = require('./store');
 const { fetchCoinglassForPack, buildCoinglassPromptLines } = require('./coinglass');
 const { attachMarketQuality } = require('./marketQuality');
+const { fetchPublicDerivatives, appendPublicDerivativesFacts } = require('./publicDerivatives');
 const {
   ASSET_UNIVERSE,
   CONTRACT_META,
@@ -729,6 +730,10 @@ async function enrichMarketIntel(pack, isFutures) {
   }
   await appendConfiguredIntel(pack);
   await appendCoinglassIntel(pack);
+  if (!pack.coinglass?.ok) {
+    pack.publicDerivatives = await fetchPublicDerivatives(pack);
+    appendPublicDerivativesFacts(pack);
+  }
   return pack;
 }
 

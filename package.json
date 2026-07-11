@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/marketPack.js && node --check src/marketQuality.js && node --check src/generator.js && node --check src/publisher.js && node --check src/mediaUploader.js && node --check src/imageAssets.js && node --check src/imageCard.js && node --check src/coinglass.js && node --check src/scheduler.js && node --check src/assetUniverse.js && node --check scripts/test-prompt-fixtures.js",
+    "check": "node --check src/server.js && node --check src/marketPack.js && node --check src/marketQuality.js && node --check src/publicDerivatives.js && node --check src/generator.js && node --check src/publisher.js && node --check src/mediaUploader.js && node --check src/imageAssets.js && node --check src/imageCard.js && node --check src/coinglass.js && node --check src/scheduler.js && node --check src/assetUniverse.js && node --check scripts/test-prompt-fixtures.js",
     "dry-run": "node src/cli.js dry-run",
     "publish-once": "node src/cli.js publish",
     "test:prompt": "node scripts/test-prompt-fixtures.js",

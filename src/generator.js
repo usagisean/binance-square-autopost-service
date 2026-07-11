@@ -33,6 +33,7 @@ function selectPostAngle(pack = {}) {
     liquidation_map: { id: 'liquidation_map', instruction: '只讲一个清算地图结论：哪一侧的流动性密集区更近，以及价格靠近那里可能引发什么；不要把热区说成必然目标。' },
     price_oi_divergence: { id: 'price_oi_divergence', instruction: '围绕价格与持仓量背离写：明确这是新增仓位推动、减仓推动还是暂时无法确认；不要把涨跌幅重新报一遍。' },
     crowded_positioning: { id: 'crowded_positioning', instruction: '围绕多空拥挤写：说清哪一侧更挤、哪里可能发生反向挤压；只给一个反证条件。' },
+    funding_dislocation: { id: 'funding_dislocation', instruction: '围绕永续资金成本写：说清是哪一侧在付费、仓位是否拥挤，以及价格需要怎样变化才会验证判断。注明这是跨交易所参照，不要冒充 Binance 数据。' },
     orderbook_imbalance: { id: 'orderbook_imbalance', instruction: '盘口只能作为一条证据，不能把前20档快照当成趋势结论；重点说明挂单是否与价格行为一致。' },
     late_momentum: { id: 'late_momentum', instruction: '波动已经发生，正文判断增量资金是否还在，不要用“热闹、追高、拿不回”这些套话。' },
     sector_rotation: { id: 'sector_rotation', instruction: '只写板块内部注意力如何迁移，以及主角为何胜出或掉队；不要平均介绍三个币。' },

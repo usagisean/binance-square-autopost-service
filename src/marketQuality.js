@@ -15,7 +15,8 @@ function evidenceAvailable(pack = {}) {
     orderbook: cg.orderbookAskBids?.available === true,
     depth: pack.marketIntel?.symbols?.[pack.trio?.lead?.symbol]?.depth?.available === true,
     chart: Array.isArray(pack.chart?.klines) && pack.chart.klines.length >= 20,
-    news: Array.isArray(pack.externalIntel?.news) && pack.externalIntel.news.length > 0
+    news: Array.isArray(pack.externalIntel?.news) && pack.externalIntel.news.length > 0,
+    publicDerivatives: pack.publicDerivatives?.ok === true && Boolean(pack.publicDerivatives?.symbols?.[pack.trio?.lead?.symbol])
   };
 }
 
@@ -32,6 +33,9 @@ function deriveMarketEvent(pack = {}) {
   const oiChange = n(cg.openInterest?.changePct ?? intel.openInterestValueChange5m);
   const longRatio = n(cg.longShort?.longPercent);
   const shortRatio = n(cg.longShort?.shortPercent);
+  const publicDerivatives = pack.publicDerivatives?.symbols?.[lead.symbol] || {};
+  const fundingHourlyPct = n(publicDerivatives.fundingRateHourly) * 100;
+  const oiToVolume = n(publicDerivatives.openInterestUsd) / Math.max(1, n(publicDerivatives.volume24hUsd));
 
   let score = 0;
   const reasons = [];
@@ -47,11 +51,14 @@ function deriveMarketEvent(pack = {}) {
   if (available.liquidation) add(8, '存在清算证据');
   if (available.heatmap) add(12, '存在清算热力图');
   if (available.news) add(8, '存在可验证事件信息');
+  if (available.publicDerivatives) add(6, '存在免费永续合约仓位证据');
+  if (available.publicDerivatives && Math.abs(fundingHourlyPct) >= 0.003) add(clamp(Math.abs(fundingHourlyPct) * 1200, 4, 10), '资金费率偏离中性');
+  if (available.publicDerivatives && oiToVolume >= 1.2) add(clamp(oiToVolume * 3, 4, 10), '持仓相对成交量偏高');
   score = Math.round(clamp(score, 0, 100));
 
   let type = 'relative_strength';
   let claim = `${lead.symbol} 的短线强弱差值得跟踪`;
-  let imageType = available.heatmap ? 'coinglass_liquidation_heatmap' : available.openInterest || available.longShort || available.liquidation ? 'coinglass_derivatives_panel' : null;
+  let imageType = available.heatmap ? 'coinglass_liquidation_heatmap' : available.openInterest || available.longShort || available.liquidation ? 'coinglass_derivatives_panel' : available.publicDerivatives ? 'public_derivatives_panel' : null;
   if (available.heatmap) {
     type = 'liquidation_map';
     claim = `${lead.symbol} 附近的清算密集区比单根K线更值得看`;
@@ -61,6 +68,9 @@ function deriveMarketEvent(pack = {}) {
   } else if (available.longShort && Math.max(longRatio, shortRatio) >= 60) {
     type = 'crowded_positioning';
     claim = `${lead.symbol} 的合约仓位已经出现单边拥挤`;
+  } else if (available.publicDerivatives && Math.abs(fundingHourlyPct) >= 0.003) {
+    type = 'funding_dislocation';
+    claim = fundingHourlyPct > 0 ? `${lead.symbol} 永续多头正在支付更高的持仓成本` : `${lead.symbol} 永续空头正在支付更高的持仓成本`;
   } else if (Math.abs(depth) >= 18) {
     type = 'orderbook_imbalance';
     claim = depth > 0 ? `${lead.symbol} 下方挂单明显更厚` : `${lead.symbol} 上方抛压明显更重`;

@@ -527,6 +527,8 @@ images/test.png
 
 如果 Coinglass 没配 Key、情报源未启用、套餐不支持某个接口，或接口超时，发帖不会失败；默认“只发布证据图”模式会直接改发纯文本，不再拿普通 15m K 线凑图。关闭该开关后才会回退到 K 线快照。Coinglass 返回的数据只作为 `facts` 与配图证据，不会伪造新闻、链上或 KOL 信息。
 
+不购买 CoinGlass 也可以运行：服务会自动尝试免费的 Hyperliquid 公共 API，读取主角币可用的永续持仓、小时资金费率、标记溢价和 24h 合约成交额，并生成明确标注来源的 `public_derivatives_panel`。该数据只作为跨交易所杠杆情绪参照，不冒充 Binance 数据，也不会伪造清算热力图。
+
 ### 发帖质量门槛
 
 - 每轮先生成结构化 `marketEvent` 和 0-100 的 `publishScore`。
