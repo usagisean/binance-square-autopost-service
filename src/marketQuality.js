@@ -16,7 +16,8 @@ function evidenceAvailable(pack = {}) {
     depth: pack.marketIntel?.symbols?.[pack.trio?.lead?.symbol]?.depth?.available === true,
     chart: Array.isArray(pack.chart?.klines) && pack.chart.klines.length >= 20,
     news: Array.isArray(pack.externalIntel?.news) && pack.externalIntel.news.length > 0,
-    publicDerivatives: pack.publicDerivatives?.ok === true && Boolean(pack.publicDerivatives?.symbols?.[pack.trio?.lead?.symbol])
+    publicDerivatives: pack.publicDerivatives?.ok === true && Boolean(pack.publicDerivatives?.symbols?.[pack.trio?.lead?.symbol]),
+    tradfi: pack.tradfi?.ok === true
   };
 }
 
@@ -36,6 +37,9 @@ function deriveMarketEvent(pack = {}) {
   const publicDerivatives = pack.publicDerivatives?.symbols?.[lead.symbol] || {};
   const fundingHourlyPct = n(publicDerivatives.fundingRateHourly) * 100;
   const oiToVolume = n(publicDerivatives.openInterestUsd) / Math.max(1, n(publicDerivatives.volume24hUsd));
+  const tradfiAssets = pack.tradfi?.assets || {};
+  const growthMove = [tradfiAssets.QQQ, tradfiAssets.SOXX, tradfiAssets.NVDA].filter(Boolean).reduce((s, x) => s + n(x.change24h), 0) / Math.max(1, [tradfiAssets.QQQ, tradfiAssets.SOXX, tradfiAssets.NVDA].filter(Boolean).length);
+  const cryptoBetaMove = [tradfiAssets.COIN, tradfiAssets.MSTR].filter(Boolean).reduce((s, x) => s + n(x.change24h), 0) / Math.max(1, [tradfiAssets.COIN, tradfiAssets.MSTR].filter(Boolean).length);
 
   let score = 0;
   const reasons = [];
@@ -54,6 +58,10 @@ function deriveMarketEvent(pack = {}) {
   if (available.publicDerivatives) add(6, '存在免费永续合约仓位证据');
   if (available.publicDerivatives && Math.abs(fundingHourlyPct) >= 0.003) add(clamp(Math.abs(fundingHourlyPct) * 1200, 4, 10), '资金费率偏离中性');
   if (available.publicDerivatives && oiToVolume >= 1.2) add(clamp(oiToVolume * 3, 4, 10), '持仓相对成交量偏高');
+  const crossMarketAligned = lead.bucket === 'ai'
+    ? Math.abs(growthMove) >= 0.7 && n(lead.change1h) * growthMove > 0
+    : ['BTC', 'ETH', 'SOL', 'BNB', 'COIN', 'MSTR'].includes(lead.symbol) && Math.abs(cryptoBetaMove) >= 1 && n(lead.change1h) * cryptoBetaMove > 0;
+  if (available.tradfi && crossMarketAligned) add(7, '传统市场与币圈方向互相验证');
   score = Math.round(clamp(score, 0, 100));
 
   let type = 'relative_strength';
@@ -71,6 +79,9 @@ function deriveMarketEvent(pack = {}) {
   } else if (available.publicDerivatives && Math.abs(fundingHourlyPct) >= 0.003) {
     type = 'funding_dislocation';
     claim = fundingHourlyPct > 0 ? `${lead.symbol} 永续多头正在支付更高的持仓成本` : `${lead.symbol} 永续空头正在支付更高的持仓成本`;
+  } else if (crossMarketAligned) {
+    type = 'cross_market_confirmation';
+    claim = lead.bucket === 'ai' ? `${lead.symbol} 与纳指/半导体情绪出现同向验证` : `${lead.symbol} 与美股 crypto beta 出现同向验证`;
   } else if (Math.abs(depth) >= 18) {
     type = 'orderbook_imbalance';
     claim = depth > 0 ? `${lead.symbol} 下方挂单明显更厚` : `${lead.symbol} 上方抛压明显更重`;

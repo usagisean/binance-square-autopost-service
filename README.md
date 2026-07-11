@@ -537,6 +537,13 @@ images/test.png
 - 默认最低证据图分为 58；只有真实清算、OI、多空比等衍生品证据达到门槛时才生成图片。
 - 后台“任务设置”可调整两个门槛，也可关闭质量门槛进行兼容运行。
 
+### 动态市场发现与传统市场参照
+
+- 默认开启 `dynamicUniverse`：每轮从 Binance 当前全部可交易 USDT 市场中按波动、成交额、振幅、相对强弱和冷却规则动态选主角，不受手工 `squareTagSymbols` 池限制。
+- 禁用币种名单仍然生效；手工标签池仅在关闭动态发现后恢复为旧版优先逻辑。
+- 免费读取 Yahoo Finance 公共图表中的 QQQ、SPY、SOXX、IWM、NVDA、AMD、COIN、MSTR、VIX、美元指数、美债收益率、黄金和原油。
+- 传统市场只作为背景和跨市场验证，不会被当成 Binance 可交易币，也不会强行塞进每篇正文；数据会明确标记可能延迟。
+
 实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 获取上传 URL，再 PUT 图片，轮询 `/image/imageStatus`，最后发布 `contentType: 1 + bodyTextOnly + imageList`。
 
 不需要新的 Key，仍使用现有 `BINANCE_SQUARE_OPENAPI_KEY`。

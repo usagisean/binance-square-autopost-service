@@ -3,6 +3,7 @@ const { getSettings, saveMarketCache, loadMarketCache, getCounter, getIntelConfi
 const { fetchCoinglassForPack, buildCoinglassPromptLines } = require('./coinglass');
 const { attachMarketQuality } = require('./marketQuality');
 const { fetchPublicDerivatives, appendPublicDerivativesFacts } = require('./publicDerivatives');
+const { fetchTradfiReferences, attachTradfi } = require('./tradfi');
 const {
   ASSET_UNIVERSE,
   CONTRACT_META,
@@ -99,13 +100,14 @@ function rankScore(asset, anchors, recentBias, settings = {}) {
   const amplitude = Number(asset.amplitude24h || 0);
   const bucketBonus = asset.bucket === 'contract-meme' ? 4.5 : asset.bucket === 'bnb-beta' ? 3.5 : asset.bucket === 'meme' ? 2.5 : asset.bucket === 'contract-beta' ? 2.0 : asset.bucket === 'high-vol' ? 4.0 : asset.bucket === 'anchor' ? -8 : 0.8;
   const squareTagSet = new Set((settings.squareTagSymbols || []).map(s => String(s).toUpperCase()));
-  const squareTagBonus = settings.preferSquareTagSymbols !== false && squareTagSet.has(asset.symbol) ? 6 : 0;
+  const dynamic = settings.dynamicUniverse !== false;
+  const squareTagBonus = !dynamic && settings.preferSquareTagSymbols !== false && squareTagSet.has(asset.symbol) ? 6 : 0;
   const cooldownPenalty = recentBias.cooldownSymbols?.has(asset.symbol) ? 1000 : 0;
   const freqPenalty = (recentBias.symbolCounts.get(asset.symbol) || 0) * 5.5;
   const last1Penalty = recentBias.last1 === asset.symbol ? 16 : 0;
   const last2Penalty = recentBias.last2.includes(asset.symbol) ? 7 : 0;
   const last5Penalty = recentBias.last5.includes(asset.symbol) ? 3 : 0;
-  return abs1h * 3.3 + abs24h * 0.9 + amplitude * 0.45 + rel * 2.2 + volumeBoost + bucketBonus + squareTagBonus + priorityBonus(asset.symbol) - cooldownPenalty - freqPenalty - last1Penalty - last2Penalty - last5Penalty;
+  return abs1h * 3.3 + abs24h * 0.9 + amplitude * 0.45 + rel * 2.2 + volumeBoost + bucketBonus + squareTagBonus + (dynamic ? 0 : priorityBonus(asset.symbol)) - cooldownPenalty - freqPenalty - last1Penalty - last2Penalty - last5Penalty;
 }
 async function getIntervalChange(baseUrl, symbol, interval = '1h', options = {}) {
   const rows = await getJson(`${baseUrl}/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=2`, options);
@@ -183,7 +185,7 @@ function chooseTrio(rows, oneHourMap, fourHourMap, recentBias, source, isFutures
   const anchor = Math.abs(anchors.BTC.change1h) >= Math.abs(anchors.ETH.change1h) ? anchors.BTC : anchors.ETH;
   const squareTagSet = new Set((settings.squareTagSymbols || []).map(s => String(s).toUpperCase()));
   const scored = assets.filter(a => a.symbol !== anchor.symbol).map(a => ({ ...a, score: rankScore(a, anchors, recentBias, settings), squareTagPreferred: squareTagSet.has(a.symbol) })).sort((a, b) => b.score - a.score);
-  const preferTagged = settings.preferSquareTagSymbols !== false;
+  const preferTagged = settings.dynamicUniverse === false && settings.preferSquareTagSymbols !== false;
   const taggedLead = scored.slice(0, 15).find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && a.squareTagPreferred && !recentBias.cooldownSymbols?.has(a.symbol));
   const lead = (preferTagged ? taggedLead : null) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && !recentBias.cooldownSymbols?.has(a.symbol)) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && a.symbol !== recentBias.last1) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && !recentBias.last2.includes(a.symbol)) || scored[0];
   if (!lead) throw new Error('no_lead_asset');
@@ -752,15 +754,15 @@ async function buildFuturesPack(settings) {
     const quoteVol = Number(row.quoteVolume || 0);
     return Number.isFinite(quoteVol) && quoteVol >= 50000;
   });
-  const topMovers = pickTopMovers(rows).slice(0, 30);
-  const candidateRows = uniqueRows([...topMovers, ...trackedRows(rows), ...rows.filter(r => r.symbol === 'BTCUSDT' || r.symbol === 'ETHUSDT')]);
+  const topMovers = (settings.dynamicUniverse === false ? pickTopMovers(rows) : discoverDynamicRows(rows, 5000000)).slice(0, settings.dynamicUniverse === false ? 30 : 80);
+  const candidateRows = uniqueRows([...topMovers, ...(settings.dynamicUniverse === false ? trackedRows(rows) : []), ...rows.filter(r => r.symbol === 'BTCUSDT' || r.symbol === 'ETHUSDT')]);
   const symbols = new Set(candidateRows.map(r => r.symbol));
   const [oneHourMap, fourHourMap] = await Promise.all([
     hydrate1h(symbols, 'https://fapi.binance.com/fapi/v1'),
     hydrate4h(symbols, 'https://fapi.binance.com/fapi/v1')
   ]);
   const pack = chooseTrio(candidateRows, oneHourMap, fourHourMap, recentBias, 'binance-futures-priority', true, settings);
-  return attachMarketQuality(attachStructuredMarketPack(await enrichMarketIntel(pack, true)));
+  return finalizePack(await enrichMarketIntel(pack, true));
 }
 function pickTopMovers(rows) {
   return rows.filter(row => {
@@ -769,6 +771,13 @@ function pickTopMovers(rows) {
     const quoteVol = Number(row.quoteVolume || 0);
     return abs24h >= 4 || quoteVol >= 15000000 || PRIORITY_SYMBOLS.includes(base);
   }).sort((a, b) => Math.abs(Number(b.priceChangePercent || 0)) - Math.abs(Number(a.priceChangePercent || 0)));
+}
+function discoverDynamicRows(rows = [], minQuoteVolume = 5000000) {
+  return rows.filter(row => Number(row.quoteVolume || 0) >= minQuoteVolume).map(row => {
+    const quoteVolume = Math.max(1, Number(row.quoteVolume || 0));
+    const score = Math.abs(Number(row.priceChangePercent || 0)) * 1.1 + amplitude24h(row) * 0.65 + Math.log10(quoteVolume) * 1.8;
+    return { row, score };
+  }).sort((a, b) => b.score - a.score).map(x => x.row);
 }
 async function buildSpotPack(settings, futuresErr) {
   const recentBias = buildRecentBias(settings);
@@ -783,14 +792,14 @@ async function buildSpotPack(settings, futuresErr) {
     return Number.isFinite(quoteVol) && quoteVol >= minVol;
   });
   if (!rows.length) throw new Error('empty_spot_rows');
-  const topMovers = pickTopMovers(rows).slice(0, 30);
-  const candidateRows = uniqueRows([...topMovers, ...trackedRows(rows), ...rows.filter(r => r.symbol === 'BTCUSDT' || r.symbol === 'ETHUSDT')]);
+  const topMovers = (settings.dynamicUniverse === false ? pickTopMovers(rows) : discoverDynamicRows(rows, 5000000)).slice(0, settings.dynamicUniverse === false ? 30 : 80);
+  const candidateRows = uniqueRows([...topMovers, ...(settings.dynamicUniverse === false ? trackedRows(rows) : []), ...rows.filter(r => r.symbol === 'BTCUSDT' || r.symbol === 'ETHUSDT')]);
   const symbols = new Set(candidateRows.map(r => r.symbol));
   const [oneHourMap, fourHourMap] = await Promise.all([
     hydrate1h(symbols, 'https://www.binance.com/api/v3', { proxy: false, timeoutMs: 15000 }),
     hydrate4h(symbols, 'https://www.binance.com/api/v3', { proxy: false, timeoutMs: 15000 })
   ]);
-  const pack = attachMarketQuality(attachStructuredMarketPack(await enrichMarketIntel(chooseTrio(candidateRows, oneHourMap, fourHourMap, recentBias, 'binance-spot-www-fallback', false, settings), false)));
+  const pack = await finalizePack(await enrichMarketIntel(chooseTrio(candidateRows, oneHourMap, fourHourMap, recentBias, 'binance-spot-www-fallback', false, settings), false));
   pack.futuresFallbackReason = futuresErr?.message || String(futuresErr || '');
   return pack;
 }
@@ -807,9 +816,14 @@ async function buildMarketPack() {
       return pack;
     } catch (spotErr) {
       const cache = loadMarketCache(settings.marketCacheMaxAgeMinutes);
-      if (cache && !packHasBannedSymbol(cache.pack, settings)) return attachMarketQuality(attachStructuredMarketPack({ ...cache.pack, generatedAt: new Date().toISOString(), cacheFallback: true, cacheSavedAt: new Date(cache.savedAt).toISOString(), fallbackReason: spotErr.message || String(spotErr) }));
+      if (cache && !packHasBannedSymbol(cache.pack, settings)) return finalizePack({ ...cache.pack, generatedAt: new Date().toISOString(), cacheFallback: true, cacheSavedAt: new Date(cache.savedAt).toISOString(), fallbackReason: spotErr.message || String(spotErr) });
       throw new Error(`market_pack_failed:futures=${futuresErr.message || futuresErr};spot=${spotErr.message || spotErr}`);
     }
   }
+}
+async function finalizePack(pack) {
+  const structured = attachStructuredMarketPack(pack);
+  attachTradfi(structured, await fetchTradfiReferences());
+  return attachMarketQuality(structured);
 }
 module.exports = { buildMarketPack, fmt, usd, price };

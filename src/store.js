@@ -53,6 +53,7 @@ const defaultSettings = {
   imagePathCount: Number(process.env.IMAGE_PATH_COUNT || 1),
   imagePaths: String(process.env.IMAGE_PATHS || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 4),
   preferSquareTagSymbols: true,
+  dynamicUniverse: true,
   squareTagSymbols: DEFAULT_SQUARE_TAG_SYMBOLS,
   llmProvider: config.llmProvider,
   openaiBaseUrl: config.openaiBaseUrl,
@@ -148,6 +149,7 @@ function saveSettings(patch) {
     next.imagePaths = next.imagePaths.map(s => String(s).trim()).filter(Boolean).slice(0, 4);
   }
   next.preferSquareTagSymbols = next.preferSquareTagSymbols !== false;
+  next.dynamicUniverse = next.dynamicUniverse !== false;
   if (!Array.isArray(next.bannedPhrases)) {
     next.bannedPhrases = String(next.bannedPhrases || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
   } else {

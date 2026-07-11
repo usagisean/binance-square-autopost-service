@@ -8,6 +8,7 @@ const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
 const { buildSvg, chooseEvidenceType } = require('../src/imageCard');
 const { deriveMarketEvent, attachMarketQuality } = require('../src/marketQuality');
 const { normalizeHyperliquid } = require('../src/publicDerivatives');
+const { parseChart } = require('../src/tradfi');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -119,6 +120,20 @@ function basePack(extra = {}) {
   pack.marketEvent = event; pack.publishScore = event.score;
   assert.strictEqual(chooseEvidenceType(pack), 'public_derivatives_panel');
   assert(buildSvg(pack).includes('DERIVATIVES SNAPSHOT'));
+})();
+
+(function tradfiChartRejectsBrokenZeroTicks() {
+  const row = parseChart({ symbol: 'QQQ', group: 'macro', label: 'Nasdaq ETF' }, { chart: { result: [{ meta: { chartPreviousClose: 500, currency: 'USD' }, timestamp: [1, 2, 3], indicators: { quote: [{ close: [501, 0, 505] }] } }] } });
+  assert.strictEqual(row.price, 505);
+  assert.strictEqual(Number(row.change24h.toFixed(2)), 1);
+})();
+
+(function tradfiCanConfirmCryptoAiWithoutBecomingLead() {
+  const pack = basePack({ tradfi: { ok: true, assets: { QQQ: { change24h: 1.2 }, SOXX: { change24h: 1.8 }, NVDA: { change24h: 2.4 }, COIN: { change24h: 0.5 }, MSTR: { change24h: 0.7 } } } });
+  const event = deriveMarketEvent(pack);
+  assert.strictEqual(event.subject, 'RENDER');
+  assert.strictEqual(event.evidenceAvailable.tradfi, true);
+  assert(event.reasons.some(x => x.reason === '传统市场与币圈方向互相验证'));
 })();
 
 (function bannedPhraseValidation() {
