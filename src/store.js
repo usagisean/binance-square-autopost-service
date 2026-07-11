@@ -39,12 +39,16 @@ const defaultSettings = {
   leadCooldownMinutes: 180,
   maxConsecutiveFailures: 3,
   similarityThreshold: 0.72,
+  enableQualityGate: true,
+  minPublishScore: 42,
+  minImageEvidenceScore: 58,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
   tradePlanMode: 'opinion',
   enableImagePosts: String(process.env.ENABLE_IMAGE_POSTS || '').toLowerCase() === 'true',
   autoGenerateImage: String(process.env.AUTO_GENERATE_IMAGE || '').toLowerCase() === 'true',
   autoImageMaxDaily: Math.max(0, Number(process.env.AUTO_IMAGE_MAX_DAILY || 20)),
+  evidenceImagesOnly: true,
   imagePostMode: process.env.IMAGE_POST_MODE || 'static',
   imagePathCount: Number(process.env.IMAGE_PATH_COUNT || 1),
   imagePaths: String(process.env.IMAGE_PATHS || '').split(/\r?\n|,/).map(s => s.trim()).filter(Boolean).slice(0, 4),
@@ -127,11 +131,15 @@ function saveSettings(patch) {
   next.leadCooldownMinutes = Math.max(0, Number(next.leadCooldownMinutes ?? defaultSettings.leadCooldownMinutes));
   next.maxConsecutiveFailures = Math.max(0, Number(next.maxConsecutiveFailures ?? defaultSettings.maxConsecutiveFailures));
   next.similarityThreshold = Math.max(0, Math.min(1, Number(next.similarityThreshold ?? defaultSettings.similarityThreshold)));
+  next.enableQualityGate = next.enableQualityGate !== false;
+  next.minPublishScore = Math.max(0, Math.min(100, Number(next.minPublishScore ?? defaultSettings.minPublishScore)));
+  next.minImageEvidenceScore = Math.max(0, Math.min(100, Number(next.minImageEvidenceScore ?? defaultSettings.minImageEvidenceScore)));
   next.includeTradePlan = next.includeTradePlan !== false;
   next.tradePlanMode = ['opinion', 'soft_opinion', 'conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
   next.enableImagePosts = next.enableImagePosts === true;
   next.autoGenerateImage = next.autoGenerateImage === true;
   next.autoImageMaxDaily = Math.max(0, Number(next.autoImageMaxDaily ?? defaultSettings.autoImageMaxDaily));
+  next.evidenceImagesOnly = next.evidenceImagesOnly !== false;
   next.imagePostMode = ['off', 'static', 'random', 'rotate'].includes(String(next.imagePostMode || '').toLowerCase()) ? String(next.imagePostMode).toLowerCase() : defaultSettings.imagePostMode;
   next.imagePathCount = Math.max(1, Math.min(4, Number(next.imagePathCount || defaultSettings.imagePathCount)));
   if (!Array.isArray(next.imagePaths)) {

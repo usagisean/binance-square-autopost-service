@@ -6,6 +6,7 @@ const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
 const { buildSvg, chooseEvidenceType } = require('../src/imageCard');
+const { deriveMarketEvent, attachMarketQuality } = require('../src/marketQuality');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -89,6 +90,21 @@ function basePack(extra = {}) {
 
 (function marketPackJsonSerializable() {
   assert.doesNotThrow(() => JSON.stringify(basePack()));
+})();
+
+(function marketQualityProducesOneThesis() {
+  const pack = basePack({
+    marketIntel: { symbols: { RENDER: { depth: { available: true, imbalance: -31 } } } },
+    chart: { klines: Array.from({ length: 32 }, (_, i) => ({ open: 7 + i * 0.01, high: 7.1 + i * 0.01, low: 6.9 + i * 0.01, close: 7.02 + i * 0.01 })) }
+  });
+  const event = deriveMarketEvent(pack);
+  assert(event.score > 0);
+  assert(event.subject === 'RENDER');
+  assert(event.claim);
+  assert(['orderbook_imbalance', 'late_momentum', 'relative_strength'].includes(event.type));
+  attachMarketQuality(pack);
+  assert.strictEqual(pack.publishScore, pack.marketEvent.score);
+  assert.doesNotThrow(() => JSON.stringify(pack.marketEvent));
 })();
 
 (function bannedPhraseValidation() {

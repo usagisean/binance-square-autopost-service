@@ -1,6 +1,7 @@
 const { getJson, request } = require('./httpClient');
 const { getSettings, saveMarketCache, loadMarketCache, getCounter, getIntelConfig } = require('./store');
 const { fetchCoinglassForPack, buildCoinglassPromptLines } = require('./coinglass');
+const { attachMarketQuality } = require('./marketQuality');
 const {
   ASSET_UNIVERSE,
   CONTRACT_META,
@@ -754,7 +755,7 @@ async function buildFuturesPack(settings) {
     hydrate4h(symbols, 'https://fapi.binance.com/fapi/v1')
   ]);
   const pack = chooseTrio(candidateRows, oneHourMap, fourHourMap, recentBias, 'binance-futures-priority', true, settings);
-  return attachStructuredMarketPack(await enrichMarketIntel(pack, true));
+  return attachMarketQuality(attachStructuredMarketPack(await enrichMarketIntel(pack, true)));
 }
 function pickTopMovers(rows) {
   return rows.filter(row => {
@@ -784,7 +785,7 @@ async function buildSpotPack(settings, futuresErr) {
     hydrate1h(symbols, 'https://www.binance.com/api/v3', { proxy: false, timeoutMs: 15000 }),
     hydrate4h(symbols, 'https://www.binance.com/api/v3', { proxy: false, timeoutMs: 15000 })
   ]);
-  const pack = attachStructuredMarketPack(await enrichMarketIntel(chooseTrio(candidateRows, oneHourMap, fourHourMap, recentBias, 'binance-spot-www-fallback', false, settings), false));
+  const pack = attachMarketQuality(attachStructuredMarketPack(await enrichMarketIntel(chooseTrio(candidateRows, oneHourMap, fourHourMap, recentBias, 'binance-spot-www-fallback', false, settings), false)));
   pack.futuresFallbackReason = futuresErr?.message || String(futuresErr || '');
   return pack;
 }
@@ -801,7 +802,7 @@ async function buildMarketPack() {
       return pack;
     } catch (spotErr) {
       const cache = loadMarketCache(settings.marketCacheMaxAgeMinutes);
-      if (cache && !packHasBannedSymbol(cache.pack, settings)) return attachStructuredMarketPack({ ...cache.pack, generatedAt: new Date().toISOString(), cacheFallback: true, cacheSavedAt: new Date(cache.savedAt).toISOString(), fallbackReason: spotErr.message || String(spotErr) });
+      if (cache && !packHasBannedSymbol(cache.pack, settings)) return attachMarketQuality(attachStructuredMarketPack({ ...cache.pack, generatedAt: new Date().toISOString(), cacheFallback: true, cacheSavedAt: new Date(cache.savedAt).toISOString(), fallbackReason: spotErr.message || String(spotErr) }));
       throw new Error(`market_pack_failed:futures=${futuresErr.message || futuresErr};spot=${spotErr.message || spotErr}`);
     }
   }

@@ -525,7 +525,15 @@ images/test.png
 - `/api/futures/open-interest/history`：OI 变化；
 - `/api/futures/global-long-short-account-ratio/history`：账户多空比。
 
-如果 Coinglass 没配 Key、情报源未启用、套餐不支持某个接口，或接口超时，发帖不会失败；系统会自动回退到原来的 15m K 线图 / 纯文本。Coinglass 返回的数据只作为 `facts` 与配图证据，不会伪造新闻、链上或 KOL 信息。
+如果 Coinglass 没配 Key、情报源未启用、套餐不支持某个接口，或接口超时，发帖不会失败；默认“只发布证据图”模式会直接改发纯文本，不再拿普通 15m K 线凑图。关闭该开关后才会回退到 K 线快照。Coinglass 返回的数据只作为 `facts` 与配图证据，不会伪造新闻、链上或 KOL 信息。
+
+### 发帖质量门槛
+
+- 每轮先生成结构化 `marketEvent` 和 0-100 的 `publishScore`。
+- 默认低于 42 分记录为 `skipped`，不调用大模型、不消耗发帖额度，也不会计入连续失败。
+- 帖子只围绕一个事件展开，例如清算热区、价格/OI背离、仓位拥挤、盘口失衡、板块轮动或相对强弱。
+- 默认最低证据图分为 58；只有真实清算、OI、多空比等衍生品证据达到门槛时才生成图片。
+- 后台“任务设置”可调整两个门槛，也可关闭质量门槛进行兼容运行。
 
 实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 获取上传 URL，再 PUT 图片，轮询 `/image/imageStatus`，最后发布 `contentType: 1 + bodyTextOnly + imageList`。
 

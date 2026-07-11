@@ -18,6 +18,7 @@ function seededPick(items, seed = '') {
   return items[Math.abs(h) % items.length];
 }
 function selectPostAngle(pack = {}) {
+  const event = pack.marketEvent || {};
   const lead = pack.trio?.lead || {};
   const peer = pack.trio?.peer || {};
   const anchor = pack.trio?.anchor || {};
@@ -28,6 +29,16 @@ function selectPostAngle(pack = {}) {
   const anchor24h = numeric(anchor.change24h);
   const aiSymbols = new Set(ASSET_UNIVERSE.crypto_ai);
   const stockAiStrongCryptoLag = /美股\s*AI.*(强|热).*币圈.*(弱|没跟|承接弱)|外部情绪.*承接没打开/.test(`${pack.stockTakeaways || ''} ${pack.aiTakeaways || ''}`);
+  const eventAngles = {
+    liquidation_map: { id: 'liquidation_map', instruction: '只讲一个清算地图结论：哪一侧的流动性密集区更近，以及价格靠近那里可能引发什么；不要把热区说成必然目标。' },
+    price_oi_divergence: { id: 'price_oi_divergence', instruction: '围绕价格与持仓量背离写：明确这是新增仓位推动、减仓推动还是暂时无法确认；不要把涨跌幅重新报一遍。' },
+    crowded_positioning: { id: 'crowded_positioning', instruction: '围绕多空拥挤写：说清哪一侧更挤、哪里可能发生反向挤压；只给一个反证条件。' },
+    orderbook_imbalance: { id: 'orderbook_imbalance', instruction: '盘口只能作为一条证据，不能把前20档快照当成趋势结论；重点说明挂单是否与价格行为一致。' },
+    late_momentum: { id: 'late_momentum', instruction: '波动已经发生，正文判断增量资金是否还在，不要用“热闹、追高、拿不回”这些套话。' },
+    sector_rotation: { id: 'sector_rotation', instruction: '只写板块内部注意力如何迁移，以及主角为何胜出或掉队；不要平均介绍三个币。' },
+    relative_strength: { id: 'relative_strength', instruction: '用一个相对强弱差提出清晰结论，另外两个币只用一句作参照；不要逐项复盘。' }
+  };
+  if (eventAngles[event.type]) return eventAngles[event.type];
   const options = [];
   if (stockAiStrongCryptoLag) options.push({ id: 'ai_stock_hot_crypto_cold', instruction: '如果提 AI，只写外面热、币圈这边没跟上；不要写成美股复盘，也不要写“承接没打开”。' });
   if (aiSymbols.has(String(lead.symbol || '').toUpperCase()) && !/不足|缺失/.test(String(pack.aiTakeaways || ''))) options.push({ id: 'ai_coin_attention', instruction: '主角是 AI 币时，写它在 AI 币里有没有被人多看一眼；不要写技术计划。' });
@@ -49,58 +60,36 @@ function selectStyleCard(pack = {}) {
   const peer = pack.trio?.peer || {};
   const anchor = pack.trio?.anchor || {};
   const seed = `style:${pack.generatedAt || ''}:${lead.symbol || ''}:${peer.symbol || ''}:${anchor.symbol || ''}`;
-  const lead1h = numeric(lead.change1h);
-  const lead24h = numeric(lead.change24h);
-  const anchor1h = numeric(anchor.change1h);
-  const depthLine = String([...(pack.facts || []), ...(pack.takeaways || [])].join(' '));
   const options = [
     {
-      id: 'street_note',
-      instruction: '像盘中随手说一句：第一句可以是观察、疑问或吐槽，但不要以“这轮/这笔/这单/现在/偏多/偏空/不追”开头；最多写 2 个数字。'
+      id: 'claim_evidence_falsifier',
+      instruction: '三步但不分段：一句明确结论，一条决定性证据，一个会推翻结论的条件。最多两个数字。'
     },
     {
-      id: 'looks_hot_but',
-      instruction: '写成“看着热闹，但哪里不太对”的盘中评论；不要用反抽、承接、容错低这些词。'
+      id: 'contrarian_observation',
+      instruction: '从一个反直觉细节开头，随后解释它为何比表面涨跌更重要；不要故作惊讶。'
     },
     {
-      id: 'one_price_area',
-      instruction: '只提一个位置，像真人说“这个位置拿不回来就没什么好看”，不要写进场/止损/失效。'
+      id: 'evidence_first',
+      instruction: '先抛出最稀缺的证据，再用一句话落到方向判断；其余数据全部舍弃。'
     },
     {
-      id: 'relative_strength',
-      instruction: '用强弱差讲主角有没有被多看一眼：peer 和 anchor 只能做陪衬，不要逐个报数据。'
+      id: 'comparison_in_one_sentence',
+      instruction: '只用一句比较句交代 peer 与 anchor，正文其余部分全部留给主角和核心论点。'
     },
     {
-      id: 'attention_stolen',
-      instruction: '如果主角没亮点，就写它的注意力被别的币抢走；不要写“这单我不碰”。'
+      id: 'question_then_answer',
+      instruction: '用一个具体市场问题开头，下一句直接回答；问题不能是空泛的“还能涨吗”。'
     },
     {
-      id: 'market_texture',
-      instruction: '盘口、资金费率、OI 或振幅只挑一个关键证据，用人话说它“买盘没跟上/上面有压力/热度散了”；别写流水账。'
+      id: 'compact_desk_note',
+      instruction: '像交易台内部短评：不用自称，不评价自己是否交易，只记录异常、解释含义、给出验证点。'
     },
     {
-      id: 'short_commentary',
-      instruction: '压短，像发给朋友的一段盘中评论：一句判断 + 一个证据 + 一个值得看的位置。不要把 1h/4h/24h 都列出来。'
+      id: 'two_sentence_note',
+      instruction: '全文尽量两句：第一句判断，第二句证据和反证条件；禁止三币逐个介绍。'
     }
   ];
-  if (lead24h > 15 || Math.abs(lead1h) > 2.5) {
-    options.unshift({
-      id: 'late_move',
-      instruction: '主角波动已经大，写“热闹可能已经被价格吃掉一段”的意思；不要写追高、止损、失效。'
-    });
-  }
-  if (anchor1h < 0 && lead1h > 0) {
-    options.unshift({
-      id: 'index_not_lifting',
-      instruction: 'BTC/ETH 没把气氛托起来时，写小币自己动容易没后劲；不要写“主流没配合”。'
-    });
-  }
-  if (/盘口|卖压|买盘|资金费率|持仓|OI|主动买卖比/.test(depthLine)) {
-    options.unshift({
-      id: 'microstructure',
-      instruction: '优先写盘口/杠杆的一处异常，别从涨跌幅开头；把价位写成“拿不回来/上面有人卖/买盘没跟上”这种人话。'
-    });
-  }
   return seededPick(options, seed);
 }
 
@@ -132,6 +121,27 @@ function recentPostBrief(settings = getSettings()) {
   }).join('\n');
 }
 
+const TRACKED_CLICHES = ['热闹', '拿不回', '点开', '容易', '看点', '前20档', '买盘', '慢慢挪', '留得住', '卡在半路', '多看一眼', '值得看'];
+function recentOverusedPhrases(limit = 40) {
+  const rows = listRuns(Math.max(60, limit)).filter(r => r.postText && r.status === 'published').slice(0, limit);
+  if (rows.length < 8) return [];
+  return TRACKED_CLICHES.map(phrase => ({ phrase, count: rows.filter(r => r.postText.includes(phrase)).length }))
+    .filter(x => x.count >= Math.max(3, Math.ceil(rows.length * 0.18)))
+    .sort((a, b) => b.count - a.count);
+}
+
+function editorialBrief(pack = {}) {
+  const event = pack.marketEvent || {};
+  const reasons = (event.reasons || []).map(x => x.reason).join('、');
+  return [
+    `本轮唯一论点：${event.claim || `${pack.trio?.lead?.symbol} 当前的价格行为值得核对`}`,
+    `事件类型：${event.type || 'relative_strength'}；发布价值分：${event.score ?? '--'}/100；置信度：${event.confidence || 'unknown'}`,
+    `最强证据：${reasons || '仅使用给定 facts 中最相关的一项'}`,
+    '写作顺序：先给结论，再给一条决定性证据，最后给反证条件或下一项观察。不要以固定口头禅连接三段。',
+    '三个 Cashtag 必须出现，但 peer/anchor 合计最多占一句，不能分别展开。'
+  ].join('\n');
+}
+
 function renderTemplate(template, pack, settings = getSettings()) {
   const lead = pack.trio.lead.symbol;
   const peer = pack.trio.peer.symbol;
@@ -139,6 +149,7 @@ function renderTemplate(template, pack, settings = getSettings()) {
   const postAngle = selectPostAngle(pack);
   const styleCard = selectStyleCard(pack);
   const voiceAngle = postAngle?.instruction || '只围绕一个主角给出清晰判断，其他币只做参照。';
+  const overused = recentOverusedPhrases();
   const vars = {
     JOB_NAME: settings.jobName || '',
     JOB_DESCRIPTION: settings.jobDescription || '',
@@ -163,6 +174,9 @@ function renderTemplate(template, pack, settings = getSettings()) {
     TRADE_PLAN: formatTradePlanForPrompt(pack.tradePlan),
     TRADE_PLAN_JSON: pack.tradePlan ? JSON.stringify(pack.tradePlan, null, 2) : '',
     RECENT_POSTS: recentPostBrief(settings),
+    MARKET_EVENT_JSON: JSON.stringify(pack.marketEvent || {}, null, 2),
+    EDITORIAL_BRIEF: editorialBrief(pack),
+    RECENT_OVERUSED_PHRASES: overused.length ? overused.map(x => `${x.phrase}（近期开了${x.count}次）`).join('、') : '无',
     EXTERNAL_INTEL_JSON: pack.externalIntel ? JSON.stringify(pack.externalIntel, null, 2) : '',
     STOCK_CASHTAGS: pack.stockCashtags || '',
     MACRO_CASHTAGS: pack.macroCashtags || '',
@@ -505,6 +519,9 @@ function validatePostText(text, pack, settings = getSettings()) {
   for (const phrase of banned) {
     if (clean.includes(phrase)) errors.push(`banned_phrase:${phrase}`);
   }
+  for (const item of recentOverusedPhrases()) {
+    if (clean.includes(item.phrase)) errors.push(`overused_phrase:${item.phrase}:${item.count}`);
+  }
   if (settings.requireCashtags) {
     for (const symbol of [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol]) {
       if (!clean.includes(cashtag(symbol))) errors.push(`missing_cashtag:${symbol}`);
@@ -583,7 +600,7 @@ async function generatePost(pack) {
   const settings = getSettings();
   const prompt = getActivePrompt();
   if (!prompt) throw new Error('no_active_prompt');
-  const renderedPrompt = renderTemplate(prompt.content, pack, settings);
+  const renderedPrompt = `${renderTemplate(prompt.content, pack, settings)}\n\n【本轮编辑指令（优先于旧模板中的写法建议）】\n${editorialBrief(pack)}\n近期过度使用、这次必须避开的词：${recentOverusedPhrases().map(x => x.phrase).join('、') || '无'}。\n结构化事件：\n${JSON.stringify(pack.marketEvent || {}, null, 2)}`;
   const provider = String(settings.llmProvider || config.llmProvider || 'mock').toLowerCase();
   if (provider === 'mock') {
     const text = mockGenerate(pack);
@@ -667,4 +684,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, recentOverusedPhrases, editorialBrief };
