@@ -41,7 +41,7 @@ const defaultSettings = {
   similarityThreshold: 0.72,
   enableQualityGate: true,
   minPublishScore: 42,
-  minImageEvidenceScore: 58,
+  minImageEvidenceScore: 50,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
   tradePlanMode: 'opinion',

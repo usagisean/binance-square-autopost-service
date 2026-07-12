@@ -99,6 +99,11 @@ function deriveMarketEvent(pack = {}) {
     claim = `${lead.symbol} 当前没有形成足够独立的交易事件`;
   }
 
+  if (!imageType) {
+    if (type === 'orderbook_imbalance' && available.depth) imageType = 'binance_orderbook_depth';
+    else if (type === 'cross_market_confirmation' && available.tradfi) imageType = 'cross_market_panel';
+  }
+
   const confidence = score >= 70 ? 'high' : score >= 48 ? 'medium' : 'low';
   return {
     type,
@@ -107,7 +112,7 @@ function deriveMarketEvent(pack = {}) {
     score,
     confidence,
     publishable: score >= 42 && type !== 'low_signal',
-    imageEligible: Boolean(imageType) && score >= 58,
+    imageEligible: Boolean(imageType) && score >= 50,
     imageType,
     reasons: reasons.sort((a, b) => b.points - a.points).slice(0, 5),
     evidenceAvailable: available,

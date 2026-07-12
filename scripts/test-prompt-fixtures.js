@@ -136,6 +136,16 @@ function basePack(extra = {}) {
   assert(event.reasons.some(x => x.reason === '传统市场与币圈方向互相验证'));
 })();
 
+(function realOrderbookCanBecomeEvidenceImage() {
+  const levels = Array.from({ length: 10 }, (_, i) => ({ price: 7.1 + i * 0.01, qty: 100 + i * 10, notional: 710 + i * 90 }));
+  const pack = basePack({ marketIntel: { symbols: { RENDER: { depth: { available: true, imbalance: -31 }, spreadBps: 1.4, depthLevels: { bids: levels, asks: levels.map(x => ({ ...x, price: x.price + 0.2 })) } } } } });
+  attachMarketQuality(pack);
+  assert.strictEqual(pack.marketEvent.type, 'orderbook_imbalance');
+  assert.strictEqual(pack.marketEvent.imageType, 'binance_orderbook_depth');
+  assert.strictEqual(chooseEvidenceType(pack), 'binance_orderbook_depth');
+  assert(buildSvg(pack).includes('ORDERBOOK DEPTH'));
+})();
+
 (function bannedPhraseValidation() {
   const text = '$RENDER 这波就是主线，$FET 只是参照，$BTC 没拖后腿；站上 $7.25 再看，跌回 $6.90 就放弃。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));

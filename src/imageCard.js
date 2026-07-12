@@ -121,6 +121,61 @@ function hasCoinglassPanel(pack = {}) {
 function hasPublicDerivativesPanel(pack = {}) {
   return pack.publicDerivatives?.ok === true && Boolean(pack.publicDerivatives?.symbols?.[pack.trio?.lead?.symbol]);
 }
+function hasBinanceOrderbookDepth(pack = {}) {
+  const lead = pack.trio?.lead?.symbol;
+  const levels = pack.marketIntel?.symbols?.[lead]?.depthLevels;
+  return Array.isArray(levels?.bids) && levels.bids.length >= 5 && Array.isArray(levels?.asks) && levels.asks.length >= 5;
+}
+function buildBinanceOrderbookDepthSvg(pack = {}) {
+  const lead = pack.trio?.lead || {};
+  const peer = pack.trio?.peer || {};
+  const anchor = pack.trio?.anchor || {};
+  const intel = pack.marketIntel?.symbols?.[lead.symbol] || {};
+  const bids = (intel.depthLevels?.bids || []).slice(0, 10);
+  const asks = (intel.depthLevels?.asks || []).slice(0, 10);
+  const maxNotional = Math.max(1, ...bids.map(x => Number(x.notional || 0)), ...asks.map(x => Number(x.notional || 0)));
+  const row = (x, y, item, color, alignRight = false) => {
+    const barW = Math.max(3, 390 * Number(item.notional || 0) / maxNotional);
+    const bx = alignRight ? x + 420 - barW : x;
+    const tx = alignRight ? x + 410 : x + 10;
+    const anchorText = alignRight ? 'end' : 'start';
+    return `<rect x="${bx.toFixed(1)}" y="${y - 20}" width="${barW.toFixed(1)}" height="27" rx="4" fill="${color}" opacity="0.24"/><text x="${tx}" y="${y}" text-anchor="${anchorText}" font-size="17" fill="${TEXT}" font-weight="800">${esc(price(item.price))}</text><text x="${alignRight ? x + 8 : x + 412}" y="${y}" text-anchor="${alignRight ? 'start' : 'end'}" font-size="14" fill="${MUTED}">${esc(usd(item.notional))}</text>`;
+  };
+  const bidRows = bids.map((x, i) => row(68, 202 + i * 39, x, GREEN, false)).join('');
+  const askRows = asks.map((x, i) => row(792, 202 + i * 39, x, RED, true)).join('');
+  const imbalance = Number(intel.depth?.imbalance || 0);
+  const spread = Number(intel.spreadBps || 0);
+  const sideText = imbalance > 0 ? `买方名义挂单多 ${Math.abs(imbalance).toFixed(1)}%` : `卖方名义挂单多 ${Math.abs(imbalance).toFixed(1)}%`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <style>text { font-family: "Noto Sans CJK SC", "Noto Sans CJK", "DejaVu Sans", Arial, sans-serif; }</style>
+  <rect width="${W}" height="${H}" fill="${BG}"/><rect x="28" y="28" width="1224" height="664" rx="22" fill="${PANEL}" stroke="#273244"/>
+  <text x="62" y="78" font-size="34" fill="${TEXT}" font-weight="900">${esc(lead.symbol)}USDT</text><text x="302" y="78" font-size="19" fill="${YELLOW}" font-weight="900">ORDERBOOK DEPTH</text>
+  <text x="62" y="108" font-size="16" fill="${MUTED}">Binance ${esc(pack.source?.includes('futures') ? 'Futures' : 'Spot')} public orderbook · top 10 levels · point-in-time evidence</text>
+  <rect x="54" y="132" width="552" height="480" rx="16" fill="#0b0f16" stroke="#273244"/><rect x="674" y="132" width="552" height="480" rx="16" fill="#0b0f16" stroke="#273244"/>
+  <text x="78" y="170" font-size="20" fill="${GREEN}" font-weight="900">BIDS 买单</text><text x="1200" y="170" text-anchor="end" font-size="20" fill="${RED}" font-weight="900">卖单 ASKS</text>
+  ${bidRows}${askRows}
+  <rect x="456" y="626" width="368" height="45" rx="11" fill="#0b0f16" stroke="#273244"/><text x="640" y="655" text-anchor="middle" font-size="18" fill="${imbalance >= 0 ? GREEN : RED}" font-weight="900">${esc(sideText)} · spread ${esc(spread.toFixed(1))} bp</text>
+  <text x="62" y="654" font-size="15" fill="${MUTED}">$${esc(lead.symbol)} · $${esc(peer.symbol)} · $${esc(anchor.symbol)}</text><text x="1218" y="654" text-anchor="end" font-size="14" fill="#58606d">挂单可撤销，仅作为当前流动性结构证据</text>
+  </svg>`;
+}
+
+function hasCrossMarketPanel(pack = {}) { return pack.tradfi?.ok === true && Object.keys(pack.tradfi?.assets || {}).length >= 5; }
+function buildCrossMarketPanelSvg(pack = {}) {
+  const lead = pack.trio?.lead || {};
+  const assets = pack.tradfi?.assets || {};
+  const wanted = ['QQQ', 'SOXX', 'NVDA', 'COIN', 'MSTR', '^VIX'];
+  const rows = [{ symbol: lead.symbol, label: 'CRYPTO LEAD', change: Number(lead.change24h || 0), crypto: true }, ...wanted.map(s => assets[s] && ({ symbol: s, label: assets[s].label || s, change: Number(assets[s].change24h || 0) })).filter(Boolean)];
+  const maxAbs = Math.max(1, ...rows.map(x => Math.abs(x.change)));
+  const bars = rows.map((r, i) => {
+    const y = 170 + i * 67;
+    const w = Math.min(430, Math.abs(r.change) / maxAbs * 430);
+    const positive = r.change >= 0;
+    const x = positive ? 640 : 640 - w;
+    const color = positive ? GREEN : RED;
+    return `<text x="70" y="${y + 24}" font-size="22" fill="${r.crypto ? YELLOW : TEXT}" font-weight="900">${esc(r.symbol)}</text><text x="205" y="${y + 24}" font-size="15" fill="${MUTED}">${esc(r.label)}</text><rect x="${x}" y="${y}" width="${w}" height="34" rx="6" fill="${color}" opacity="0.78"/><text x="${positive ? x + w + 12 : x - 12}" y="${y + 24}" text-anchor="${positive ? 'start' : 'end'}" font-size="18" fill="${color}" font-weight="900">${esc(pct(r.change))}</text>`;
+  }).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><style>text { font-family: "Noto Sans CJK SC", "Noto Sans CJK", "DejaVu Sans", Arial, sans-serif; }</style><rect width="${W}" height="${H}" fill="${BG}"/><rect x="28" y="28" width="1224" height="664" rx="22" fill="${PANEL}" stroke="#273244"/><text x="62" y="78" font-size="30" fill="${TEXT}" font-weight="900">${esc(lead.symbol)} · CROSS-MARKET CHECK</text><text x="62" y="110" font-size="16" fill="${MUTED}">Crypto: Binance public market · TradFi: Yahoo Finance public chart (may be delayed)</text><line x1="640" y1="144" x2="640" y2="620" stroke="#4b5563" stroke-width="2"/>${bars}<text x="62" y="660" font-size="16" fill="${MUTED}">${esc(pack.marketEvent?.claim || '传统市场只作方向参照，不代表因果关系')}</text></svg>`;
+}
 function buildPublicDerivativesPanelSvg(pack = {}) {
   const lead = pack.trio?.lead || {};
   const peer = pack.trio?.peer || {};
@@ -369,12 +424,16 @@ function buildTradingScreenshotSvg(pack) {
 function buildSvg(pack) {
   if (hasCoinglassHeatmap(pack)) return buildCoinglassHeatmapSvg(pack);
   if (hasCoinglassPanel(pack)) return buildCoinglassPanelSvg(pack);
+  if (pack.marketEvent?.imageType === 'binance_orderbook_depth' && hasBinanceOrderbookDepth(pack)) return buildBinanceOrderbookDepthSvg(pack);
+  if (pack.marketEvent?.imageType === 'cross_market_panel' && hasCrossMarketPanel(pack)) return buildCrossMarketPanelSvg(pack);
   if (hasPublicDerivativesPanel(pack)) return buildPublicDerivativesPanelSvg(pack);
   return buildTradingScreenshotSvg(pack);
 }
 function chooseEvidenceType(pack = {}) {
   if (hasCoinglassHeatmap(pack)) return 'coinglass_liquidation_heatmap';
   if (hasCoinglassPanel(pack)) return 'coinglass_derivatives_panel';
+  if (pack.marketEvent?.imageType === 'binance_orderbook_depth' && hasBinanceOrderbookDepth(pack)) return 'binance_orderbook_depth';
+  if (pack.marketEvent?.imageType === 'cross_market_panel' && hasCrossMarketPanel(pack)) return 'cross_market_panel';
   if (hasPublicDerivativesPanel(pack)) return 'public_derivatives_panel';
   return 'chart_snapshot';
 }
