@@ -102,6 +102,7 @@ function deriveMarketEvent(pack = {}) {
   if (!imageType) {
     if (type === 'orderbook_imbalance' && available.depth) imageType = 'binance_orderbook_depth';
     else if (type === 'cross_market_confirmation' && available.tradfi) imageType = 'cross_market_panel';
+    else if (available.depth && score >= 50) imageType = 'binance_orderbook_depth';
   }
 
   const confidence = score >= 70 ? 'high' : score >= 48 ? 'medium' : 'low';
