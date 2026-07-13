@@ -1,7 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { renderTemplate, validatePostText, selectPostAngle } = require('../src/generator');
+const { renderTemplate, validatePostText, selectPostAngle, selectEmojiStyle, editorialBrief } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
@@ -88,6 +88,16 @@ function basePack(extra = {}) {
   const rendered = renderTemplate(template, pack, baseSettings());
   assert(['btc_eth_not_lifting', 'move_already_loud', 'ai_coin_attention'].includes(angle.id));
   assert(rendered.includes('人话') || rendered.includes('盘中'));
+})();
+
+(function emojiStyleIsVariedButBounded() {
+  const pack = basePack();
+  const style = selectEmojiStyle(pack);
+  assert(['none', 'one', 'two'].includes(style.id));
+  assert(style.emojis.length <= 2);
+  assert(editorialBrief(pack).includes('全文最多 2 个'));
+  const rendered = renderTemplate(template, pack, baseSettings());
+  assert(rendered.includes('本轮表情符号策略'));
 })();
 
 (function marketPackJsonSerializable() {

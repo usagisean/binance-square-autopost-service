@@ -95,6 +95,43 @@ function selectStyleCard(pack = {}) {
   return seededPick(options, seed);
 }
 
+function selectEmojiStyle(pack = {}) {
+  const lead = pack.trio?.lead || {};
+  const event = pack.marketEvent || {};
+  const seed = `emoji:${pack.generatedAt || ''}:${lead.symbol || ''}:${event.type || ''}`;
+  const candidates = ['👀'];
+
+  if (String(lead.bucket || '').toLowerCase() === 'ai') candidates.push('🤖');
+  if (['liquidation_map', 'crowded_positioning', 'funding_dislocation'].includes(event.type)) candidates.push('⚠️');
+  if (event.type === 'orderbook_imbalance') candidates.push('🧱');
+  if (event.type === 'cross_market_confirmation') candidates.push('🌐');
+  if (Math.abs(numeric(lead.amplitude24h)) >= 12) candidates.push('🌊');
+  if (numeric(lead.change1h) >= 0.7) candidates.push('📈', '🟢');
+  if (numeric(lead.change1h) <= -0.7) candidates.push('📉', '🔻');
+
+  const pool = [...new Set(candidates)];
+  const mode = seededPick(['one', 'one', 'one', 'one', 'two', 'none'], seed);
+  if (mode === 'none') {
+    return { id: 'none', emojis: [], instruction: '本轮不强行使用表情符号，让连续发帖保留真人式变化。' };
+  }
+
+  const first = seededPick(pool, `${seed}:first`) || '👀';
+  if (mode === 'two') {
+    const secondPool = pool.filter(x => x !== first);
+    const second = seededPick(secondPool.length ? secondPool : ['👀'], `${seed}:second`);
+    return {
+      id: 'two',
+      emojis: [first, second],
+      instruction: `正文自然使用 2 个表情符号，可用 ${first} ${second}；放在判断或关键转折附近，不要都堆在开头。`
+    };
+  }
+  return {
+    id: 'one',
+    emojis: [first],
+    instruction: `正文自然使用 1 个 ${first}；放在最值得停顿的位置，不要固定跟在币种名后面。`
+  };
+}
+
 function formatTradePlanForPrompt(tradePlan = null) {
   if (!tradePlan) return '';
   const symbol = tradePlan.symbol || '';
@@ -135,12 +172,14 @@ function recentOverusedPhrases(limit = 40) {
 function editorialBrief(pack = {}) {
   const event = pack.marketEvent || {};
   const reasons = (event.reasons || []).map(x => x.reason).join('、');
+  const emojiStyle = selectEmojiStyle(pack);
   return [
     `本轮唯一论点：${event.claim || `${pack.trio?.lead?.symbol} 当前的价格行为值得核对`}`,
     `事件类型：${event.type || 'relative_strength'}；发布价值分：${event.score ?? '--'}/100；置信度：${event.confidence || 'unknown'}`,
     `最强证据：${reasons || '仅使用给定 facts 中最相关的一项'}`,
     '写作顺序：先给结论，再给一条决定性证据，最后给反证条件或下一项观察。不要以固定口头禅连接三段。',
-    '三个 Cashtag 必须出现，但 peer/anchor 合计最多占一句，不能分别展开。'
+    '三个 Cashtag 必须出现，但 peer/anchor 合计最多占一句，不能分别展开。',
+    `表情符号策略：${emojiStyle.instruction} 全文最多 2 个；禁用 🚀、🤑、💯，不要连续堆叠。`
   ].join('\n');
 }
 
@@ -150,6 +189,7 @@ function renderTemplate(template, pack, settings = getSettings()) {
   const anchor = pack.trio.anchor.symbol;
   const postAngle = selectPostAngle(pack);
   const styleCard = selectStyleCard(pack);
+  const emojiStyle = selectEmojiStyle(pack);
   const voiceAngle = postAngle?.instruction || '只围绕一个主角给出清晰判断，其他币只做参照。';
   const overused = recentOverusedPhrases();
   const vars = {
@@ -163,6 +203,8 @@ function renderTemplate(template, pack, settings = getSettings()) {
     POST_ANGLE: postAngle?.id || '',
     STYLE_CARD: styleCard?.instruction || '',
     STYLE_CARD_ID: styleCard?.id || '',
+    EMOJI_STYLE: emojiStyle?.instruction || '',
+    EMOJI_STYLE_ID: emojiStyle?.id || '',
     MIN_POST_CHARS: String(settings.minPostChars || 180),
     MAX_POST_CHARS: String(settings.maxPostChars || 360),
     LEAD: lead,
@@ -567,6 +609,7 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 10. 不要标题、不要项目符号、不要免责声明、不要报告腔。
 11. 如果美股/ETF或AI板块参照缺失，正文不要写“暂无数据/数据缺失/本轮不使用”，直接忽略缺失部分。
 12. 禁止出现这些表达：${[...new Set([...DEFAULT_BANNED_PHRASES, ...(settings.bannedPhrases || [])])].join('、')}。
+13. ${selectEmojiStyle(pack).instruction} 全文最多 2 个；不要使用 🚀、🤑、💯，不要连续堆叠。
 
 原文：
 ${text}
@@ -686,4 +729,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, recentOverusedPhrases, editorialBrief };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectEmojiStyle, recentOverusedPhrases, editorialBrief };
