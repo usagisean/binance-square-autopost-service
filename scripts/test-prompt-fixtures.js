@@ -109,6 +109,27 @@ function basePack(extra = {}) {
   assert.doesNotThrow(() => JSON.stringify(pack.marketEvent));
 })();
 
+(function lowSignalStillPublishesText() {
+  const quiet = {
+    symbol: 'QUIET', bucket: 'other', price: 1, change1h: 0, change4h: 0,
+    change24h: 0, volume24h: 0, amplitude24h: 0
+  };
+  const pack = basePack({
+    trio: {
+      lead: quiet,
+      peer: { ...quiet, symbol: 'PEER' },
+      anchor: { ...quiet, symbol: 'BTC', bucket: 'anchor' }
+    },
+    marketIntel: { symbols: {} },
+    chart: { klines: [] }
+  });
+  attachMarketQuality(pack);
+  assert.strictEqual(pack.marketEvent.qualityGatePassed, false);
+  assert.strictEqual(pack.marketEvent.publishable, true);
+  assert.strictEqual(pack.publishDecision.publishable, true);
+  assert.strictEqual(pack.publishDecision.reason, 'valid_market_pack');
+})();
+
 (function freePublicDerivativesAreStructured() {
   const rows = normalizeHyperliquid({ universe: [{ name: 'RENDER', maxLeverage: 10 }] }, [{ markPx: '7.2', oraclePx: '7.19', openInterest: '100000', funding: '0.00005', premium: '0.0002', dayNtlVlm: '9000000' }]);
   assert.strictEqual(rows.RENDER.openInterestUsd, 720000);

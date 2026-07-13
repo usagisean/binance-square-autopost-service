@@ -39,7 +39,9 @@ const defaultSettings = {
   leadCooldownMinutes: 180,
   maxConsecutiveFailures: 3,
   similarityThreshold: 0.72,
-  enableQualityGate: true,
+  // Legacy field retained for settings-file compatibility. Quality scoring no
+  // longer blocks a valid scheduled post; it only informs copy and images.
+  enableQualityGate: false,
   minPublishScore: 42,
   minImageEvidenceScore: 42,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
@@ -132,7 +134,7 @@ function saveSettings(patch) {
   next.leadCooldownMinutes = Math.max(0, Number(next.leadCooldownMinutes ?? defaultSettings.leadCooldownMinutes));
   next.maxConsecutiveFailures = Math.max(0, Number(next.maxConsecutiveFailures ?? defaultSettings.maxConsecutiveFailures));
   next.similarityThreshold = Math.max(0, Math.min(1, Number(next.similarityThreshold ?? defaultSettings.similarityThreshold)));
-  next.enableQualityGate = next.enableQualityGate !== false;
+  next.enableQualityGate = false;
   next.minPublishScore = Math.max(0, Math.min(100, Number(next.minPublishScore ?? defaultSettings.minPublishScore)));
   next.minImageEvidenceScore = Math.max(0, Math.min(100, Number(next.minImageEvidenceScore ?? defaultSettings.minImageEvidenceScore)));
   next.includeTradePlan = next.includeTradePlan !== false;

@@ -137,15 +137,16 @@ async function runOnce(mode = 'dry-run', meta = {}) {
     const banned = hasBannedSymbol(pack, settings);
     if (banned) throw new Error(`banned_symbol_in_trio:${banned}`);
 
+    // A valid live market pack must continue to content generation. The score is
+    // editorial metadata and an image-evidence threshold, not a post-volume gate.
+    // Previously this branch skipped roughly half of the scheduled runs whenever
+    // the market was quiet, which made the configured daily quota unreachable.
     const minPublishScore = Number(settings.minPublishScore ?? 42);
-    if (settings.enableQualityGate !== false && Number(pack.publishScore || 0) < minPublishScore) {
-      return appendRun({
-        mode, status: 'skipped', durationMs: Date.now() - startedAt, source: pack.source,
-        lead: pack.trio.lead.symbol, peer: pack.trio.peer.symbol, anchor: pack.trio.anchor.symbol,
-        skipReason: `low_publish_score:${pack.publishScore || 0}/${minPublishScore}`,
-        publishScore: pack.publishScore || 0, marketEvent: pack.marketEvent, meta
-      });
-    }
+    const qualityReference = {
+      score: Number(pack.publishScore || 0),
+      threshold: minPublishScore,
+      belowReference: Number(pack.publishScore || 0) < minPublishScore
+    };
 
     generated = await generatePost(pack);
     const livePublish = mode === 'publish' && settings.publishMode === 'live';
@@ -164,7 +165,7 @@ async function runOnce(mode = 'dry-run', meta = {}) {
         provider: generated.provider, channelId: generated.channelId, channelName: generated.channelName, model: generated.model,
         llmAttempts: generated.attempts,
         media: { enabled: settings.enableImagePosts === true, ...media },
-        publishScore: pack.publishScore, marketEvent: pack.marketEvent,
+        publishScore: pack.publishScore, marketEvent: pack.marketEvent, qualityReference,
         facts: pack.facts, takeaways: pack.takeaways, meta
       });
     }
@@ -179,7 +180,7 @@ async function runOnce(mode = 'dry-run', meta = {}) {
       provider: generated.provider, channelId: generated.channelId, channelName: generated.channelName, model: generated.model,
       llmAttempts: generated.attempts,
       media: { enabled: settings.enableImagePosts === true, ...media, images: published.images || [] },
-      publishScore: pack.publishScore, marketEvent: pack.marketEvent,
+      publishScore: pack.publishScore, marketEvent: pack.marketEvent, qualityReference,
       counter: { date: nextCounter.date, count: nextCounter.count, remaining: Math.max(0, Number(settings.maxDailyPosts || 50) - nextCounter.count) },
       facts: pack.facts, takeaways: pack.takeaways, meta
     });

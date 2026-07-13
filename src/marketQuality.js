@@ -106,13 +106,17 @@ function deriveMarketEvent(pack = {}) {
   }
 
   const confidence = score >= 70 ? 'high' : score >= 48 ? 'medium' : 'low';
+  const qualityGatePassed = score >= 42 && type !== 'low_signal';
   return {
     type,
     subject: lead.symbol,
     claim,
     score,
     confidence,
-    publishable: score >= 42 && type !== 'low_signal',
+    // Every valid market pack remains publishable. qualityGatePassed is kept as
+    // a non-blocking signal for editorial choices, observability and images.
+    publishable: true,
+    qualityGatePassed,
     imageEligible: Boolean(imageType) && score >= 42,
     imageType,
     reasons: reasons.sort((a, b) => b.points - a.points).slice(0, 5),
@@ -125,7 +129,12 @@ function attachMarketQuality(pack = {}) {
   const event = deriveMarketEvent(pack);
   pack.marketEvent = event;
   pack.publishScore = event.score;
-  pack.publishDecision = { publishable: event.publishable, reason: event.publishable ? 'quality_gate_passed' : `quality_gate_rejected:${event.type}:${event.score}` };
+  pack.publishDecision = {
+    publishable: true,
+    reason: 'valid_market_pack',
+    qualityGatePassed: event.qualityGatePassed,
+    qualityNote: event.qualityGatePassed ? 'quality_reference_passed' : `quality_reference_low:${event.type}:${event.score}`
+  };
   return pack;
 }
 
