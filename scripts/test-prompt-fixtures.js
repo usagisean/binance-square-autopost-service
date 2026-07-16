@@ -279,6 +279,12 @@ function basePack(extra = {}) {
   assert(validation.errors.includes('formulaic_opening'));
 })();
 
+(function repeatedMetricNameDoesNotCountAsNewMetrics() {
+  const text = 'RENDER 的跨所持仓不低，但持仓本身没有推动短线脱离大盘；24h成交额可以参考，$RENDER 与 $FET、$BTC 仍接近。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  assert(!validation.errors.some(e => e.startsWith('too_many_metrics:')));
+})();
+
 (function factualLabelsAreNotStyleBans() {
   const text = '最容易被忽略的是量价没有同步，$RENDER 1h 仍强于 $FET，$BTC 只是横盘；24h 涨幅可以参考，但不是唯一结论。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300, bannedPhrases: ['现价', '1h', '4h', '24h'] }));

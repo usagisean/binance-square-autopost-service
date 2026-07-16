@@ -670,8 +670,8 @@ function validatePostText(text, pack, settings = getSettings()) {
   if (!['off', 'opinion', 'soft_opinion'].includes(tradeMode) && settings.includeTradePlan !== false && pack.tradePlan) {
     if (!/(偏多|偏空|看多|看空|观望|不追|不碰|回踩|突破|跌破|放弃|等|空仓|少碰|过滤)/.test(clean)) errors.push('missing_trade_stance');
   }
-  const metricHits = (clean.match(/现价|1h|4h|24h|成交额|振幅|前20档|点差|买盘厚|卖压厚|资金费率|持仓|OI|主动买卖比/g) || []).length;
-  if (metricHits > 3) errors.push(`too_many_metrics:${metricHits}`);
+  const metricHits = new Set(clean.match(/现价|1h|4h|24h|成交额|振幅|前20档|点差|买盘厚|卖压厚|资金费率|持仓|OI|主动买卖比/g) || []);
+  if (metricHits.size > 3) errors.push(`too_many_metrics:${metricHits.size}`);
   for (const word of ['价格', '节奏', '方向', '波动', '注意力', '挂单', '热度', '晃']) {
     const count = clean.split(word).length - 1;
     if (count >= 3) errors.push(`repeated_word:${word}:${count}`);
