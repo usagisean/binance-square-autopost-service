@@ -585,9 +585,9 @@ function validatePostText(text, pack, settings = getSettings()) {
   for (const phrase of banned) {
     if (clean.includes(phrase)) errors.push(`banned_phrase:${phrase}`);
   }
-  for (const item of recentOverusedPhrases()) {
-    if (clean.includes(item.phrase)) errors.push(`overused_phrase:${item.phrase}:${item.count}`);
-  }
+  // Repetition history is editorial guidance, not a hard publish gate. Making
+  // every recently frequent word a validation error caused long repair loops
+  // and reduced post volume during otherwise valid market runs.
   if (settings.requireCashtags) {
     for (const symbol of [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol]) {
       if (!clean.includes(cashtag(symbol))) errors.push(`missing_cashtag:${symbol}`);
