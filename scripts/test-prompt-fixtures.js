@@ -160,6 +160,24 @@ function basePack(extra = {}) {
   assert(buildSvg(pack).includes('DERIVATIVES SNAPSHOT'));
 })();
 
+(function positioningWithoutPriceIsAUsefulEvent() {
+  const pack = basePack({
+    trio: {
+      ...basePack().trio,
+      lead: { ...basePack().trio.lead, change1h: 0.2, change24h: 1.1, amplitude24h: 4 }
+    },
+    publicDerivatives: {
+      ok: true,
+      symbols: {
+        RENDER: { openInterestUsd: 180000000, volume24hUsd: 90000000, fundingRateHourly: 0.000001 }
+      }
+    }
+  });
+  const event = deriveMarketEvent(pack);
+  assert.strictEqual(event.type, 'positioning_without_price');
+  assert(evidenceFocus({ ...pack, marketEvent: event }).includes('2.0 倍'));
+})();
+
 (function tradfiChartRejectsBrokenZeroTicks() {
   const row = parseChart({ symbol: 'QQQ', group: 'macro', label: 'Nasdaq ETF' }, { chart: { result: [{ meta: { chartPreviousClose: 500, currency: 'USD' }, timestamp: [1, 2, 3], indicators: { quote: [{ close: [501, 0, 505] }] } }] } });
   assert.strictEqual(row.price, 505);
@@ -236,6 +254,15 @@ function basePack(extra = {}) {
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
   assert(validation.errors.some(e => e.includes('banned_phrase:接戏')));
   assert(validation.errors.some(e => e.includes('banned_phrase:多空在争')));
+})();
+
+(function repeatedWordsAndGenericOpeningAreRejected() {
+  const text = 'RENDER价格没走远，价格仍在区间，价格也没有脱离大盘；$RENDER 与 $FET、$BTC 强弱接近。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  assert(validation.errors.some(e => e.startsWith('repeated_word:价格:')));
+  const generic = '大盘没有给出清晰信号。$RENDER 与 $FET、$BTC 仍然同步，暂时看不出独立变化。';
+  const genericValidation = validatePostText(generic, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  assert(genericValidation.errors.includes('lead_missing_from_opening'));
 })();
 
 (function formulaicTradePlanValidation() {

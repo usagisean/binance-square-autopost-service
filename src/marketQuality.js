@@ -90,6 +90,9 @@ function deriveMarketEvent(pack = {}) {
   } else if (available.publicDerivatives && Math.abs(fundingHourlyPct) >= 0.003) {
     type = 'funding_dislocation';
     claim = fundingHourlyPct > 0 ? `${lead.symbol} 永续多头正在支付更高的持仓成本` : `${lead.symbol} 永续空头正在支付更高的持仓成本`;
+  } else if (available.publicDerivatives && oiToVolume >= 1.2 && Math.abs(lead1h) <= 0.8) {
+    type = 'positioning_without_price';
+    claim = `${lead.symbol} 永续持仓相对成交量偏高，但价格暂时没有走出同等强度`;
   } else if (crossMarketAligned) {
     type = 'cross_market_confirmation';
     claim = lead.bucket === 'ai' ? `${lead.symbol} 与纳指/半导体情绪出现同向验证` : `${lead.symbol} 与美股 crypto beta 出现同向验证`;

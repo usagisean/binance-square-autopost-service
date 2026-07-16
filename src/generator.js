@@ -29,11 +29,14 @@ function evidenceFocus(pack = {}) {
   const anchor = pack.trio?.anchor || {};
   const relAnchor = numeric(lead.change1h) - numeric(anchor.change1h);
   const depth = numeric(pack.marketIntel?.symbols?.[lead.symbol]?.depth?.imbalance);
+  const publicDerivatives = pack.publicDerivatives?.symbols?.[lead.symbol] || {};
+  const oiToVolume = numeric(publicDerivatives.openInterestUsd) / Math.max(1, numeric(publicDerivatives.volume24hUsd));
   if (event.type === 'momentum_shift') return `${lead.symbol} 24h ${signedPct(lead.change24h)}，最近 1h ${signedPct(lead.change1h)}，两个周期方向相反。`;
   if (event.type === 'liquid_momentum') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，24h 成交额 ${shortUsd(lead.volume24h)}，相对 ${anchor.symbol} 多出 ${signedPct(relAnchor)}。`;
   if (event.type === 'volume_without_direction') return `${lead.symbol} 24h 成交额 ${shortUsd(lead.volume24h)}，但最近 1h 只有 ${signedPct(lead.change1h)}。`;
   if (event.type === 'relative_strength') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}；${peer.symbol} ${signedPct(peer.change1h)}，${anchor.symbol} ${signedPct(anchor.change1h)}。`;
   if (event.type === 'orderbook_imbalance') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，前 20 档深度差 ${signedPct(depth, 1)}；盘口只能作旁证。`;
+  if (event.type === 'positioning_without_price') return `${lead.symbol} 跨所永续持仓约为 24h 成交额的 ${oiToVolume.toFixed(1)} 倍，最近 1h 价格仅 ${signedPct(lead.change1h)}。`;
   if (event.type === 'late_momentum') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，24h ${signedPct(lead.change24h)}，成交额 ${shortUsd(lead.volume24h)}。`;
   return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}、24h ${signedPct(lead.change24h)}，相对 ${anchor.symbol} 的 1h 差值为 ${signedPct(relAnchor)}。`;
 }
@@ -80,6 +83,7 @@ function selectPostAngle(pack = {}) {
     price_oi_divergence: { id: 'price_oi_divergence', instruction: '围绕价格与持仓量背离写：明确这是新增仓位推动、减仓推动还是暂时无法确认；不要把涨跌幅重新报一遍。' },
     crowded_positioning: { id: 'crowded_positioning', instruction: '围绕多空拥挤写：说清哪一侧更挤、哪里可能发生反向挤压；只给一个反证条件。' },
     funding_dislocation: { id: 'funding_dislocation', instruction: '围绕永续资金成本写：说清是哪一侧在付费、仓位是否拥挤，以及价格需要怎样变化才会验证判断。注明这是跨交易所参照，不要冒充 Binance 数据。' },
+    positioning_without_price: { id: 'positioning_without_price', instruction: '围绕“永续持仓不低、价格却没走远”写，说明杠杆仓位在等待方向；不猜多空比例，不把它写成必涨或必跌。注明是跨所公共数据。' },
     cross_market_confirmation: { id: 'cross_market_confirmation', instruction: '围绕币圈与传统市场的同向验证写，但主角仍是加密货币；传统资产只引用一到两个，不写成美股复盘，也不要把相关性说成因果。' },
     momentum_shift: { id: 'momentum_shift', instruction: '直接说清 24h 方向与最近 1h 为什么反向：是加速结束、资金换手还是短线转弱；只选一个解释，不罗列全部指标。' },
     liquid_momentum: { id: 'liquid_momentum', instruction: '重点说这次短线变化有真实成交规模，不是小额异动；只比较一次大盘，不罗列盘口。' },
@@ -112,6 +116,13 @@ function selectStyleCard(pack = {}) {
   const anchor = pack.trio?.anchor || {};
   const seed = `style:${pack.generatedAt || ''}:${lead.symbol || ''}:${peer.symbol || ''}:${anchor.symbol || ''}`;
   const event = pack.marketEvent || {};
+  if (event.type === 'low_signal') {
+    return seededPick([
+      { id: 'quiet_plain_note', instruction: '只写 2 到 3 句：说明主角为什么尚未走出独立变化，再给一个最有用的事实。不要提问，不造比喻，不硬加关键位。' },
+      { id: 'quiet_relative_note', instruction: '用主角与 peer/anchor 的同步程度说明市场仍在横盘；只留一个数字，不写“值得关注”或操作方案。' },
+      { id: 'quiet_position_note', instruction: '如果存在持仓或成交证据，就解释为什么参与活跃仍不等于有方向；结尾直接下结论，不用问句。' }
+    ], seed);
+  }
   const options = [
     {
       id: 'plain_desk_note',
@@ -136,13 +147,17 @@ function selectStyleCard(pack = {}) {
     {
       id: 'clean_chart_caption',
       instruction: '像给一张真实行情图配说明：一个发现、一个含义，全文尽量不超过三句；不要装成交易台报告。'
-    },
-    {
-      id: 'genuine_question',
-      instruction: '正文先给判断，结尾可以留一个能让交易者表达不同看法的具体问题；禁止自问自答，禁止泛问“还能涨吗”。'
     }
   ];
-  if (['funding_dislocation', 'price_oi_divergence', 'crowded_positioning', 'liquidation_map'].includes(event.type)) {
+  if (event.confidence === 'high') {
+    options.push({
+      id: 'genuine_question',
+      instruction: '正文先给判断，结尾可以留一个能让交易者表达不同看法的具体问题；禁止自问自答，禁止泛问“还能涨吗”。'
+    });
+  }
+  if (event.type === 'positioning_without_price') {
+    options.push({ id: 'positioning_wait', instruction: '把持仓与价格不匹配写清楚：仓位在、方向没出来。不能猜哪一侧更挤，结尾直接说明还缺什么价格信号。' });
+  } else if (['funding_dislocation', 'price_oi_divergence', 'crowded_positioning', 'liquidation_map'].includes(event.type)) {
     options.push({ id: 'positioning_story', instruction: '把仓位、费率或清算写成“哪一边正在付出代价”的故事；只引用一个核心数字，不写技术分析流水账。' });
   }
   if (event.type === 'momentum_shift') {
@@ -251,8 +266,10 @@ function editorialBrief(pack = {}) {
     `其他可选证据：${reasons || '仅使用给定 facts 中最相关的一项'}`,
     `本轮表达方式：${styleCard.instruction}`,
     '先在内部拟 3 个完全不同的开头，淘汰最像近期正文的两个；不要输出草稿。',
-    '开头不能是 Cashtag、价格或涨跌幅；第一句必须是主角专属的判断，不能换个币名仍然成立。',
+    `开头不能是 Cashtag、价格或涨跌幅；第一句前 20 个字内要自然出现 ${lead.symbol}（可先不带 $），而且不能换个币名仍然成立。`,
     '用正常盘友聊天的直白中文，少形容词，不写“接戏、争位置、立方向、热闹留不住”一类拟人化套话。',
+    '同一个实词不要反复出现三次；尤其避免连续重复“价格、节奏、方向、波动、注意力”。',
+    event.type === 'low_signal' ? '本轮信号弱：只写 2 到 3 句，不用问句，不硬凑关键位，也不要假装出现了重大机会。' : '本轮信号有明确事件：围绕事件下结论，不要扩写成全市场复盘。',
     '三个 Cashtag 必须出现，但只有 lead 可以展开；peer/anchor 只放在一个短句里，不得分别报数据。',
     '最多保留两个关键数字。盘口、关键位、风险提醒三者最多选择一个，不要每篇全部写齐。',
     `表情符号策略：${emojiStyle.instruction} 全文最多 2 个；禁用 🚀、🤑、💯，不要连续堆叠。`
@@ -655,6 +672,13 @@ function validatePostText(text, pack, settings = getSettings()) {
   }
   const metricHits = (clean.match(/现价|1h|4h|24h|成交额|振幅|前20档|点差|买盘厚|卖压厚|资金费率|持仓|OI|主动买卖比/g) || []).length;
   if (metricHits > 3) errors.push(`too_many_metrics:${metricHits}`);
+  for (const word of ['价格', '节奏', '方向', '波动', '注意力', '挂单', '热度', '晃']) {
+    const count = clean.split(word).length - 1;
+    if (count >= 3) errors.push(`repeated_word:${word}:${count}`);
+  }
+  const firstSentence = clean.split(/[。！？]/)[0] || '';
+  const leadSymbol = String(pack.trio?.lead?.symbol || '').toUpperCase();
+  if (leadSymbol && !firstSentence.toUpperCase().includes(leadSymbol)) errors.push('lead_missing_from_opening');
   if (/^\s*\$[A-Z0-9]{1,16}\b/.test(clean) || /^\s*(这轮|这笔|这单|现在|偏空|偏多|我这边只盯|追高|不追|别被)/.test(clean)) errors.push('formulaic_opening');
   const sim = maxRecentSimilarity(clean, settings);
   if (sim >= Number(settings.similarityThreshold || 0.72)) errors.push(`too_similar:${sim.toFixed(2)}`);
@@ -688,6 +712,8 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 11. 如果美股/ETF或AI板块参照缺失，正文不要写“暂无数据/数据缺失/本轮不使用”，直接忽略缺失部分。
 12. 禁止出现这些表达：${effectiveBannedPhrases(settings).join('、')}。
 13. ${selectEmojiStyle(pack).instruction} 全文最多 2 个；不要使用 🚀、🤑、💯，不要连续堆叠。
+14. “价格、节奏、方向、波动、注意力、挂单、热度”等实词各自最多出现 2 次，删掉同义反复。
+15. 第一句前 20 个字内自然出现主角 ${pack.trio?.lead?.symbol || ''}，但不能以 Cashtag 开头。
 
 原文：
 ${text}
