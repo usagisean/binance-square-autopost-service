@@ -93,21 +93,28 @@ function rankScore(asset, anchors, recentBias, settings = {}) {
   const abs1h = Math.abs(Number(asset.change1h || 0));
   const abs24h = Math.abs(Number(asset.change24h || 0));
   const quoteVol = Math.max(1, Number(asset.volume24h || 0));
-  const volumeBoost = Math.log10(quoteVol);
+  const logVolume = Math.log10(quoteVol);
+  const volumeBoost = clamp((logVolume - 6) * 5.5, 0, 20);
   const relBtc = Number(asset.change1h || 0) - Number(anchors.BTC?.change1h || 0);
   const relEth = Number(asset.change1h || 0) - Number(anchors.ETH?.change1h || 0);
   const rel = Math.max(Math.abs(relBtc), Math.abs(relEth));
   const amplitude = Number(asset.amplitude24h || 0);
-  const bucketBonus = asset.bucket === 'contract-meme' ? 4.5 : asset.bucket === 'bnb-beta' ? 3.5 : asset.bucket === 'meme' ? 2.5 : asset.bucket === 'contract-beta' ? 2.0 : asset.bucket === 'high-vol' ? 4.0 : asset.bucket === 'anchor' ? -8 : 0.8;
-  const squareTagSet = new Set((settings.squareTagSymbols || []).map(s => String(s).toUpperCase()));
   const dynamic = settings.dynamicUniverse !== false;
+  const configuredBucketBonus = asset.bucket === 'contract-meme' ? 4.5 : asset.bucket === 'bnb-beta' ? 3.5 : asset.bucket === 'meme' ? 2.5 : asset.bucket === 'contract-beta' ? 2.0 : asset.bucket === 'high-vol' ? 4.0 : asset.bucket === 'anchor' ? -8 : 0.8;
+  // Dynamic discovery must be driven by live attention, not membership in a
+  // hand-maintained symbol list. Buckets remain useful only in legacy pool mode.
+  const bucketBonus = dynamic ? (asset.bucket === 'anchor' ? -8 : 0) : configuredBucketBonus;
+  const activityScore = clamp(abs1h * 2.8, 0, 16) + clamp(abs24h * 0.5, 0, 11) + clamp(amplitude * 0.2, 0, 9) + clamp(rel * 1.8, 0, 10);
+  const thinMarketPenalty = quoteVol < 10000000 ? 5 : 0;
+  const noisyTailPenalty = quoteVol < 25000000 && amplitude > 45 ? 5 : 0;
+  const squareTagSet = new Set((settings.squareTagSymbols || []).map(s => String(s).toUpperCase()));
   const squareTagBonus = !dynamic && settings.preferSquareTagSymbols !== false && squareTagSet.has(asset.symbol) ? 6 : 0;
   const cooldownPenalty = recentBias.cooldownSymbols?.has(asset.symbol) ? 1000 : 0;
   const freqPenalty = (recentBias.symbolCounts.get(asset.symbol) || 0) * 5.5;
   const last1Penalty = recentBias.last1 === asset.symbol ? 16 : 0;
   const last2Penalty = recentBias.last2.includes(asset.symbol) ? 7 : 0;
   const last5Penalty = recentBias.last5.includes(asset.symbol) ? 3 : 0;
-  return abs1h * 3.3 + abs24h * 0.9 + amplitude * 0.45 + rel * 2.2 + volumeBoost + bucketBonus + squareTagBonus + (dynamic ? 0 : priorityBonus(asset.symbol)) - cooldownPenalty - freqPenalty - last1Penalty - last2Penalty - last5Penalty;
+  return activityScore + volumeBoost + bucketBonus + squareTagBonus + (dynamic ? 0 : priorityBonus(asset.symbol)) - thinMarketPenalty - noisyTailPenalty - cooldownPenalty - freqPenalty - last1Penalty - last2Penalty - last5Penalty;
 }
 async function getIntervalChange(baseUrl, symbol, interval = '1h', options = {}) {
   const rows = await getJson(`${baseUrl}/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=2`, options);
@@ -163,11 +170,11 @@ function buildTakeaways(lead, peer, anchor) {
   const anchor1h = Number(anchor.change1h || 0);
   const peer1h = Number(peer.change1h || 0);
   if (lead24h > 18 && lead1h < 0) {
-    lines.push(`${lead.symbol} 日内涨幅还在，但小时线回落，追高容错低，正文应围绕是否还有承接写。`);
+    lines.push(`${lead.symbol} 24h 涨幅仍高，但最近 1h 已回落；正文应判断热度是在换手还是退潮，不写追单建议。`);
   } else if (lead1h > 1.2 && anchor1h <= 0) {
-    lines.push(`${anchor.symbol} 没有配合，${lead.symbol} 单独走强时不要写成直接追，重点写触发位和失效位。`);
+    lines.push(`${anchor.symbol} 同期偏弱，${lead.symbol} 属于局部走强；正文要说清这种独立强势是否有成交或板块支持。`);
   } else if (lead1h > 1.2 && peer1h < 0) {
-    lines.push(`${lead.symbol} 短线强于同组标的，${peer.symbol} 偏弱，适合写资金切换而不是平均复盘。`);
+    lines.push(`${lead.symbol} 短线强于同组标的，${peer.symbol} 偏弱，适合写注意力迁移而不是平均复盘。`);
   } else if (lead.bucket === 'ai') {
     lines.push(`${lead.symbol} 属于 AI 币池，若 AI 板块数据不足，不要强行写美股联动。`);
   } else {
@@ -775,7 +782,9 @@ function pickTopMovers(rows) {
 function discoverDynamicRows(rows = [], minQuoteVolume = 5000000) {
   return rows.filter(row => Number(row.quoteVolume || 0) >= minQuoteVolume).map(row => {
     const quoteVolume = Math.max(1, Number(row.quoteVolume || 0));
-    const score = Math.abs(Number(row.priceChangePercent || 0)) * 1.1 + amplitude24h(row) * 0.65 + Math.log10(quoteVolume) * 1.8;
+    const score = clamp((Math.log10(quoteVolume) - 6) * 7, 0, 26)
+      + clamp(Math.abs(Number(row.priceChangePercent || 0)) * 0.6, 0, 12)
+      + clamp(amplitude24h(row) * 0.25, 0, 10);
     return { row, score };
   }).sort((a, b) => b.score - a.score).map(x => x.row);
 }
@@ -826,4 +835,4 @@ async function finalizePack(pack) {
   attachTradfi(structured, await fetchTradfiReferences());
   return attachMarketQuality(structured);
 }
-module.exports = { buildMarketPack, fmt, usd, price };
+module.exports = { buildMarketPack, fmt, usd, price, rankScore, discoverDynamicRows };

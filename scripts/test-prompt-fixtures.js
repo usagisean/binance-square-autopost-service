@@ -9,6 +9,7 @@ const { buildSvg, chooseEvidenceType } = require('../src/imageCard');
 const { deriveMarketEvent, attachMarketQuality } = require('../src/marketQuality');
 const { normalizeHyperliquid } = require('../src/publicDerivatives');
 const { parseChart } = require('../src/tradfi');
+const { rankScore, discoverDynamicRows } = require('../src/marketPack');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -97,7 +98,7 @@ function basePack(extra = {}) {
   assert(style.emojis.length <= 2);
   assert(editorialBrief(pack).includes('全文最多 2 个'));
   const rendered = renderTemplate(template, pack, baseSettings());
-  assert(rendered.includes('本轮表情符号策略'));
+  assert(rendered.includes('本轮表情策略'));
 })();
 
 (function marketPackJsonSerializable() {
@@ -113,7 +114,7 @@ function basePack(extra = {}) {
   assert(event.score > 0);
   assert(event.subject === 'RENDER');
   assert(event.claim);
-  assert(['orderbook_imbalance', 'late_momentum', 'relative_strength'].includes(event.type));
+  assert(['orderbook_imbalance', 'late_momentum', 'relative_strength', 'momentum_shift'].includes(event.type));
   attachMarketQuality(pack);
   assert.strictEqual(pack.publishScore, pack.marketEvent.score);
   assert.doesNotThrow(() => JSON.stringify(pack.marketEvent));
@@ -169,12 +170,44 @@ function basePack(extra = {}) {
 
 (function realOrderbookCanBecomeEvidenceImage() {
   const levels = Array.from({ length: 10 }, (_, i) => ({ price: 7.1 + i * 0.01, qty: 100 + i * 10, notional: 710 + i * 90 }));
-  const pack = basePack({ marketIntel: { symbols: { RENDER: { depth: { available: true, imbalance: -31 }, spreadBps: 1.4, depthLevels: { bids: levels, asks: levels.map(x => ({ ...x, price: x.price + 0.2 })) } } } } });
+  const pack = basePack({
+    trio: {
+      lead: { symbol: 'RENDER', bucket: 'ai', price: 7.12, change1h: 0.2, change4h: 0.3, change24h: 1, volume24h: 82000000, amplitude24h: 3 },
+      peer: { symbol: 'FET', bucket: 'ai', price: 1.21, change1h: 0.1, change4h: 0.2, change24h: 0.5, volume24h: 31000000, amplitude24h: 2 },
+      anchor: { symbol: 'BTC', bucket: 'anchor', price: 68400, change1h: 0, change4h: 0.1, change24h: 0.2, volume24h: 28000000000, amplitude24h: 1 }
+    },
+    sector: {},
+    marketIntel: { symbols: { RENDER: { depth: { available: true, imbalance: -50 }, spreadBps: 1.4, depthLevels: { bids: levels, asks: levels.map(x => ({ ...x, price: x.price + 0.2 })) } } } }
+  });
   attachMarketQuality(pack);
   assert.strictEqual(pack.marketEvent.type, 'orderbook_imbalance');
   assert.strictEqual(pack.marketEvent.imageType, 'binance_orderbook_depth');
   assert.strictEqual(chooseEvidenceType(pack), 'binance_orderbook_depth');
   assert(buildSvg(pack).includes('ORDERBOOK DEPTH'));
+})();
+
+(function momentumOutranksRoutineOrderbookSnapshot() {
+  const pack = basePack({
+    trio: {
+      ...basePack().trio,
+      lead: { ...basePack().trio.lead, change1h: 3.2, change24h: 15 }
+    },
+    marketIntel: { symbols: { RENDER: { depth: { available: true, imbalance: -60 } } } }
+  });
+  assert.strictEqual(deriveMarketEvent(pack).type, 'late_momentum');
+})();
+
+(function dynamicRankingBalancesLiquidityAndVolatility() {
+  const rows = [
+    { symbol: 'LIQUIDUSDT', quoteVolume: '1000000000', priceChangePercent: '6', highPrice: '11', lowPrice: '10', lastPrice: '10.5' },
+    { symbol: 'THINUSDT', quoteVolume: '5000000', priceChangePercent: '20', highPrice: '1.4', lowPrice: '1', lastPrice: '1.2' }
+  ];
+  assert.strictEqual(discoverDynamicRows(rows)[0].symbol, 'LIQUIDUSDT');
+  const anchors = { BTC: { change1h: 0 }, ETH: { change1h: 0 } };
+  const recent = { symbolCounts: new Map(), cooldownSymbols: new Set(), last1: null, last2: [], last5: [] };
+  const liquid = { symbol: 'LIQUID', bucket: 'contract-beta', change1h: 2, change24h: 6, amplitude24h: 10, volume24h: 1000000000 };
+  const thin = { symbol: 'THIN', bucket: 'contract-beta', change1h: 2, change24h: 6, amplitude24h: 10, volume24h: 5000000 };
+  assert(rankScore(liquid, anchors, recent, { dynamicUniverse: true }) > rankScore(thin, anchors, recent, { dynamicUniverse: true }));
 })();
 
 (function bannedPhraseValidation() {
@@ -194,6 +227,18 @@ function basePack(extra = {}) {
   const text = '$RENDER 现价7.12，1h +2.4%、4h +4.1%、24h +9.8%，成交额8200万，前20档买盘厚，点差很小；$FET 和 $BTC 只做参照，突破 $7.25 再看。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
   assert(validation.errors.some(e => e.startsWith('too_many_metrics:')));
+  assert(validation.errors.includes('formulaic_opening'));
+})();
+
+(function factualLabelsAreNotStyleBans() {
+  const text = '最容易被忽略的是量价没有同步，$RENDER 1h 仍强于 $FET，$BTC 只是横盘；24h 涨幅可以参考，但不是唯一结论。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300, bannedPhrases: ['现价', '1h', '4h', '24h'] }));
+  assert(!validation.errors.some(e => /banned_phrase:(现价|1h|4h|24h)/.test(e)));
+})();
+
+(function cashtagOpeningIsRejectedEvenWithoutMetrics() {
+  const text = '$RENDER 的真正变化在成交结构，$FET 和 $BTC 都没有同步放量，注意力明显偏向一边。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
   assert(validation.errors.includes('formulaic_opening'));
 })();
 

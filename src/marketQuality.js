@@ -30,6 +30,8 @@ function deriveMarketEvent(pack = {}) {
   const available = evidenceAvailable(pack);
   const relPeer = n(lead.change1h) - n(peer.change1h);
   const relAnchor = n(lead.change1h) - n(anchor.change1h);
+  const lead1h = n(lead.change1h);
+  const lead24h = n(lead.change24h);
   const depth = n(intel.depth?.imbalance);
   const oiChange = n(cg.openInterest?.changePct ?? intel.openInterestValueChange5m);
   const longRatio = n(cg.longShort?.longPercent);
@@ -64,6 +66,11 @@ function deriveMarketEvent(pack = {}) {
   if (available.tradfi && crossMarketAligned) add(7, '传统市场与币圈方向互相验证');
   score = Math.round(clamp(score, 0, 100));
 
+  const momentumShift = Math.abs(lead24h) >= 8 && Math.abs(lead1h) >= 1.2 && lead1h * lead24h < 0;
+  const momentumActive = Math.abs(lead1h) >= 2.5 || (Math.abs(lead1h) >= 1.2 && Math.abs(lead24h) >= 12);
+  const relativeActive = Math.abs(relPeer) >= 2 || Math.abs(relAnchor) >= 1.5;
+  const depthActive = available.depth && Math.abs(depth) >= 35;
+
   let type = 'relative_strength';
   let claim = `${lead.symbol} 的短线强弱差值得跟踪`;
   let imageType = available.heatmap ? 'coinglass_liquidation_heatmap' : available.openInterest || available.longShort || available.liquidation ? 'coinglass_derivatives_panel' : available.publicDerivatives ? 'public_derivatives_panel' : null;
@@ -82,21 +89,28 @@ function deriveMarketEvent(pack = {}) {
   } else if (crossMarketAligned) {
     type = 'cross_market_confirmation';
     claim = lead.bucket === 'ai' ? `${lead.symbol} 与纳指/半导体情绪出现同向验证` : `${lead.symbol} 与美股 crypto beta 出现同向验证`;
-  } else if (Math.abs(depth) >= 18) {
-    type = 'orderbook_imbalance';
-    claim = depth > 0 ? `${lead.symbol} 下方挂单明显更厚` : `${lead.symbol} 上方抛压明显更重`;
-  } else if (Math.abs(n(lead.change1h)) >= 2.5 && Math.abs(n(lead.change24h)) >= 12) {
+  } else if (momentumShift) {
+    type = 'momentum_shift';
+    claim = `${lead.symbol} 的 24h 方向与最近 1h 已经反向，短线动量正在换挡`;
+  } else if (momentumActive) {
     type = 'late_momentum';
-    claim = `${lead.symbol} 已经走出大波动，重点是增量资金还能不能跟上`;
-  } else if (Math.abs(relPeer) >= 2 || Math.abs(relAnchor) >= 1.5) {
+    claim = lead1h > 0
+      ? `${lead.symbol} 的短线动量仍在扩张，关键是成交和相对强弱能否同步`
+      : `${lead.symbol} 的短线弱势仍在扩张，关键是抛压是否继续放大`;
+  } else if (relativeActive) {
     type = 'relative_strength';
-    claim = `${lead.symbol} 与参照币的短线强弱已经拉开`;
+    claim = relAnchor >= 0
+      ? `${lead.symbol} 最近 1h 明显强于大盘参照`
+      : `${lead.symbol} 最近 1h 明显弱于大盘参照`;
   } else if (lead.bucket === 'ai' && pack.sector?.crypto_ai_follow?.available) {
     type = 'sector_rotation';
-    claim = `${lead.symbol} 在 AI 币内部的辨识度需要用板块强弱验证`;
+    claim = `${lead.symbol} 在 AI 币内部是否获得独立关注，可以用板块强弱验证`;
+  } else if (depthActive) {
+    type = 'orderbook_imbalance';
+    claim = depth > 0 ? `${lead.symbol} 下方挂单明显更厚` : `${lead.symbol} 上方抛压明显更重`;
   } else {
     type = 'low_signal';
-    claim = `${lead.symbol} 当前没有形成足够独立的交易事件`;
+    claim = `${lead.symbol} 有波动，但暂时没有形成足够独立的方向`;
   }
 
   if (!imageType) {
@@ -106,6 +120,8 @@ function deriveMarketEvent(pack = {}) {
   }
 
   const confidence = score >= 70 ? 'high' : score >= 48 ? 'medium' : 'low';
+  const stanceScore = lead1h + relAnchor * 0.45 + clamp(depth / 30, -1.5, 1.5);
+  const stance = stanceScore >= 0.8 ? 'bullish' : stanceScore <= -0.8 ? 'bearish' : 'mixed';
   const qualityGatePassed = score >= 42 && type !== 'low_signal';
   return {
     type,
@@ -113,6 +129,7 @@ function deriveMarketEvent(pack = {}) {
     claim,
     score,
     confidence,
+    stance,
     // Every valid market pack remains publishable. qualityGatePassed is kept as
     // a non-blocking signal for editorial choices, observability and images.
     publishable: true,

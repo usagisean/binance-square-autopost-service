@@ -11,6 +11,13 @@ function numeric(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
+const FACTUAL_LABEL_EXEMPTIONS = new Set(['现价', '1h', '4h', '24h']);
+function effectiveBannedPhrases(settings = getSettings(), extras = []) {
+  return [...new Set([...extras, ...DEFAULT_BANNED_PHRASES, ...(settings.bannedPhrases || [])]
+    .map(s => String(s || '').trim())
+    .filter(Boolean)
+    .filter(s => !FACTUAL_LABEL_EXEMPTIONS.has(s)))];
+}
 function seededPick(items, seed = '') {
   if (!items.length) return null;
   let h = 0;
@@ -35,7 +42,8 @@ function selectPostAngle(pack = {}) {
     crowded_positioning: { id: 'crowded_positioning', instruction: '围绕多空拥挤写：说清哪一侧更挤、哪里可能发生反向挤压；只给一个反证条件。' },
     funding_dislocation: { id: 'funding_dislocation', instruction: '围绕永续资金成本写：说清是哪一侧在付费、仓位是否拥挤，以及价格需要怎样变化才会验证判断。注明这是跨交易所参照，不要冒充 Binance 数据。' },
     cross_market_confirmation: { id: 'cross_market_confirmation', instruction: '围绕币圈与传统市场的同向验证写，但主角仍是加密货币；传统资产只引用一到两个，不写成美股复盘，也不要把相关性说成因果。' },
-    orderbook_imbalance: { id: 'orderbook_imbalance', instruction: '盘口只能作为一条证据，不能把前20档快照当成趋势结论；重点说明挂单是否与价格行为一致。' },
+    momentum_shift: { id: 'momentum_shift', instruction: '直接说清 24h 方向与最近 1h 为什么反向：是加速结束、资金换手还是短线转弱；只选一个解释，不罗列全部指标。' },
+    orderbook_imbalance: { id: 'orderbook_imbalance', instruction: '盘口最多占一句，只作辅助证据；主旨必须来自价格行为、成交或相对强弱，不能再写成“挂单是否与走势一致”的固定分析。' },
     late_momentum: { id: 'late_momentum', instruction: '波动已经发生，正文判断增量资金是否还在，不要用“热闹、追高、拿不回”这些套话。' },
     sector_rotation: { id: 'sector_rotation', instruction: '只写板块内部注意力如何迁移，以及主角为何胜出或掉队；不要平均介绍三个币。' },
     relative_strength: { id: 'relative_strength', instruction: '用一个相对强弱差提出清晰结论，另外两个币只用一句作参照；不要逐项复盘。' }
@@ -62,36 +70,43 @@ function selectStyleCard(pack = {}) {
   const peer = pack.trio?.peer || {};
   const anchor = pack.trio?.anchor || {};
   const seed = `style:${pack.generatedAt || ''}:${lead.symbol || ''}:${peer.symbol || ''}:${anchor.symbol || ''}`;
+  const event = pack.marketEvent || {};
   const options = [
     {
-      id: 'claim_evidence_falsifier',
-      instruction: '三步但不分段：一句明确结论，一条决定性证据，一个会推翻结论的条件。最多两个数字。'
+      id: 'sharp_verdict',
+      instruction: '写成 2 到 3 句短评：先给一个鲜明判断，再用一条证据解释。可以没有关键位，也不要固定补反面条件。'
     },
     {
-      id: 'contrarian_observation',
-      instruction: '从一个反直觉细节开头，随后解释它为何比表面涨跌更重要；不要故作惊讶。'
+      id: 'misread_market',
+      instruction: '指出多数人最容易看错的一点，再解释真正该看的是什么；不要使用“别只看”作为固定开头。'
     },
     {
-      id: 'evidence_first',
-      instruction: '先抛出最稀缺的证据，再用一句话落到方向判断；其余数据全部舍弃。'
+      id: 'attention_story',
+      instruction: '把数据写成注意力变化：资金为什么转向主角、为什么正在离开，或者为什么热度没有扩散。不要逐项报指标。'
     },
     {
-      id: 'comparison_in_one_sentence',
-      instruction: '只用一句比较句交代 peer 与 anchor，正文其余部分全部留给主角和核心论点。'
+      id: 'single_level_story',
+      instruction: '只围绕一个关键位置解释市场在争什么；不写成交额和振幅，不给完整操作方案。'
     },
     {
-      id: 'question_then_answer',
-      instruction: '用一个具体市场问题开头，下一句直接回答；问题不能是空泛的“还能涨吗”。'
+      id: 'relative_vote',
+      instruction: '把 peer 和 anchor 压缩到同一个短句里，只回答主角是在吸引资金还是失去资金；不要写“相对差拉开”。'
     },
     {
-      id: 'compact_desk_note',
-      instruction: '像交易台内部短评：不用自称，不评价自己是否交易，只记录异常、解释含义、给出验证点。'
+      id: 'clean_chart_caption',
+      instruction: '像给一张图配的人话说明：一个发现、一个含义，全文尽量不超过三句；不要装成交易台报告。'
     },
     {
-      id: 'two_sentence_note',
-      instruction: '全文尽量两句：第一句判断，第二句证据和反证条件；禁止三币逐个介绍。'
+      id: 'genuine_question',
+      instruction: '正文先给判断，结尾可以留一个与本轮证据直接相关的问题，引发讨论；禁止自问自答，禁止泛问“还能涨吗”。'
     }
   ];
+  if (['funding_dislocation', 'price_oi_divergence', 'crowded_positioning', 'liquidation_map'].includes(event.type)) {
+    options.push({ id: 'positioning_story', instruction: '把仓位、费率或清算写成“哪一边正在付出代价”的故事；只引用一个核心数字，不写技术分析流水账。' });
+  }
+  if (event.type === 'momentum_shift') {
+    options.push({ id: 'turning_point', instruction: '围绕节奏变化写：先说旧方向发生了什么，再指出眼下的新信号；不要加第三段风控说明。' });
+  }
   return seededPick(options, seed);
 }
 
@@ -160,7 +175,11 @@ function recentPostBrief(settings = getSettings()) {
   }).join('\n');
 }
 
-const TRACKED_CLICHES = ['热闹', '拿不回', '点开', '容易', '看点', '前20档', '买盘', '慢慢挪', '留得住', '卡在半路', '多看一眼', '值得看'];
+const TRACKED_CLICHES = [
+  '热闹', '拿不回', '点开', '容易', '看点', '慢慢挪', '留得住', '卡在半路', '多看一眼', '值得看',
+  '这一截', '同场', '相对差', '撑在那里', '撑在场内', '没被顺手拆', '只是一条证据', '快照本身',
+  '小时', '日内振幅', '挂单与价格', '挂单和价格', '后面就看'
+];
 function recentOverusedPhrases(limit = 40) {
   const rows = listRuns(Math.max(60, limit)).filter(r => r.postText && r.status === 'published').slice(0, limit);
   if (rows.length < 8) return [];
@@ -173,12 +192,15 @@ function editorialBrief(pack = {}) {
   const event = pack.marketEvent || {};
   const reasons = (event.reasons || []).map(x => x.reason).join('、');
   const emojiStyle = selectEmojiStyle(pack);
+  const styleCard = selectStyleCard(pack);
   return [
     `本轮唯一论点：${event.claim || `${pack.trio?.lead?.symbol} 当前的价格行为值得核对`}`,
-    `事件类型：${event.type || 'relative_strength'}；发布价值分：${event.score ?? '--'}/100；置信度：${event.confidence || 'unknown'}`,
+    `事件类型：${event.type || 'relative_strength'}；方向倾向：${event.stance || 'mixed'}；发布价值分：${event.score ?? '--'}/100；置信度：${event.confidence || 'unknown'}`,
     `最强证据：${reasons || '仅使用给定 facts 中最相关的一项'}`,
-    '写作顺序：先给结论，再给一条决定性证据，最后给反证条件或下一项观察。不要以固定口头禅连接三段。',
-    '三个 Cashtag 必须出现，但 peer/anchor 合计最多占一句，不能分别展开。',
+    `本轮表达方式：${styleCard.instruction}`,
+    '开头不能是 Cashtag、价格或涨跌幅；先写一个能让人停下来的判断，再自然带出主角。',
+    '三个 Cashtag 必须出现，但只有 lead 可以展开；peer/anchor 只放在一个短句里，不得分别报数据。',
+    '最多保留一个关键数字。盘口、关键位、风险提醒三者最多选择一个，不要每篇全部写齐。',
     `表情符号策略：${emojiStyle.instruction} 全文最多 2 个；禁用 🚀、🤑、💯，不要连续堆叠。`
   ].join('\n');
 }
@@ -220,7 +242,7 @@ function renderTemplate(template, pack, settings = getSettings()) {
     RECENT_POSTS: recentPostBrief(settings),
     MARKET_EVENT_JSON: JSON.stringify(pack.marketEvent || {}, null, 2),
     EDITORIAL_BRIEF: editorialBrief(pack),
-    RECENT_OVERUSED_PHRASES: overused.length ? overused.map(x => `${x.phrase}（近期开了${x.count}次）`).join('、') : '无',
+    RECENT_OVERUSED_PHRASES: overused.length ? overused.map(x => `${x.phrase}（近期出现 ${x.count} 次）`).join('、') : '无',
     EXTERNAL_INTEL_JSON: pack.externalIntel ? JSON.stringify(pack.externalIntel, null, 2) : '',
     STOCK_CASHTAGS: pack.stockCashtags || '',
     MACRO_CASHTAGS: pack.macroCashtags || '',
@@ -229,7 +251,7 @@ function renderTemplate(template, pack, settings = getSettings()) {
     AI_SECTOR_FACTS: pack.aiSectorFacts || '暂无可用AI板块行情数据。',
     STOCK_TAKEAWAYS: pack.stockTakeaways || '美股参照数据缺失，本轮不使用美股作为判断依据。',
     AI_TAKEAWAYS: pack.aiTakeaways || 'AI板块数据不足，本轮不强行写AI联动。',
-    BANNED_PHRASES: (settings.bannedPhrases || []).join('、'),
+    BANNED_PHRASES: effectiveBannedPhrases(settings).join('、'),
     MARKET_PACK_JSON: JSON.stringify(pack, null, 2)
   };
   return String(template || '').replace(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g, (_, key) => vars[key] ?? '');
@@ -558,8 +580,8 @@ function validatePostText(text, pack, settings = getSettings()) {
   const hardMin = configuredMin > 120 ? 110 : configuredMin;
   if (len < hardMin) errors.push(`too_short:${len}`);
   if (len > Number(settings.maxPostChars || 360)) errors.push(`too_long:${len}`);
-  const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '需注意风险', '暂无可用美股/ETF行情数据', '美股参照数据缺失', '本轮不使用美股作为判断依据', '暂无可用AI板块行情数据', 'AI板块数据不足', ...DEFAULT_BANNED_PHRASES];
-  const banned = [...new Set([...fixedBanned, ...(settings.bannedPhrases || [])].map(s => String(s || '').trim()).filter(Boolean))];
+  const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '需注意风险', '暂无可用美股/ETF行情数据', '美股参照数据缺失', '本轮不使用美股作为判断依据', '暂无可用AI板块行情数据', 'AI板块数据不足'];
+  const banned = effectiveBannedPhrases(settings, fixedBanned);
   for (const phrase of banned) {
     if (clean.includes(phrase)) errors.push(`banned_phrase:${phrase}`);
   }
@@ -576,8 +598,8 @@ function validatePostText(text, pack, settings = getSettings()) {
     if (!/(偏多|偏空|看多|看空|观望|不追|不碰|回踩|突破|跌破|放弃|等|空仓|少碰|过滤)/.test(clean)) errors.push('missing_trade_stance');
   }
   const metricHits = (clean.match(/现价|1h|4h|24h|成交额|振幅|前20档|点差|买盘厚|卖压厚|资金费率|持仓|OI|主动买卖比/g) || []).length;
-  if (metricHits > 4) errors.push(`too_many_metrics:${metricHits}`);
-  if (/^\s*\$[A-Z0-9]{2,12}\s*(现价|这单|这根|这里|现在|我)/.test(clean) || /^\s*(这轮|这笔|这单|现在|偏空|偏多|我这边只盯|追高|不追|别被)/.test(clean)) errors.push('formulaic_opening');
+  if (metricHits > 3) errors.push(`too_many_metrics:${metricHits}`);
+  if (/^\s*\$[A-Z0-9]{1,16}\b/.test(clean) || /^\s*(这轮|这笔|这单|现在|偏空|偏多|我这边只盯|追高|不追|别被)/.test(clean)) errors.push('formulaic_opening');
   const sim = maxRecentSimilarity(clean, settings);
   if (sim >= Number(settings.similarityThreshold || 0.72)) errors.push(`too_similar:${sim.toFixed(2)}`);
   return { ok: errors.length === 0, errors, text: clean, length: len };
@@ -603,12 +625,12 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 4. 只能使用 facts / takeaways / market pack 里的真实数据，禁止编造。
 5. 不要写交易计划，不要写开多/开空/进场/止损/失效/这单我不碰。
 6. 最多写 1 到 2 个关键数据；不要把现价、1h、4h、24h、成交额、盘口全部列一遍。
-7. 不要以“$币种 现价...”“这轮...”“这笔...”“这单...”“现在...”“偏多/偏空/不追/追高...”开头，换成人话开头。
+7. 不得以任何 Cashtag、价格、涨跌幅、“这轮/这笔/这单/现在/偏多/偏空/不追/追高”开头；第一句先给一个具体判断，再自然带出主角。
 8. 不要写“反抽/承接/压住手/容错低/失效/我的处理是/计划偏多/计划偏空/条件计划/只做条件”。
 9. 只可以轻轻带一个位置，比如“拿不回 0.084 就没太多看点”，不要写成策略单。
 10. 不要标题、不要项目符号、不要免责声明、不要报告腔。
 11. 如果美股/ETF或AI板块参照缺失，正文不要写“暂无数据/数据缺失/本轮不使用”，直接忽略缺失部分。
-12. 禁止出现这些表达：${[...new Set([...DEFAULT_BANNED_PHRASES, ...(settings.bannedPhrases || [])])].join('、')}。
+12. 禁止出现这些表达：${effectiveBannedPhrases(settings).join('、')}。
 13. ${selectEmojiStyle(pack).instruction} 全文最多 2 个；不要使用 🚀、🤑、💯，不要连续堆叠。
 
 原文：
@@ -729,4 +751,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectEmojiStyle, recentOverusedPhrases, editorialBrief };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief };
