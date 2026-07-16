@@ -11,6 +11,45 @@ function numeric(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
+function signedPct(value, digits = 2) {
+  const n = numeric(value);
+  return `${n > 0 ? '+' : ''}${n.toFixed(digits)}%`;
+}
+function shortUsd(value) {
+  const n = numeric(value);
+  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+function evidenceFocus(pack = {}) {
+  const event = pack.marketEvent || {};
+  const lead = pack.trio?.lead || {};
+  const peer = pack.trio?.peer || {};
+  const anchor = pack.trio?.anchor || {};
+  const relAnchor = numeric(lead.change1h) - numeric(anchor.change1h);
+  const depth = numeric(pack.marketIntel?.symbols?.[lead.symbol]?.depth?.imbalance);
+  if (event.type === 'momentum_shift') return `${lead.symbol} 24h ${signedPct(lead.change24h)}，最近 1h ${signedPct(lead.change1h)}，两个周期方向相反。`;
+  if (event.type === 'liquid_momentum') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，24h 成交额 ${shortUsd(lead.volume24h)}，相对 ${anchor.symbol} 多出 ${signedPct(relAnchor)}。`;
+  if (event.type === 'volume_without_direction') return `${lead.symbol} 24h 成交额 ${shortUsd(lead.volume24h)}，但最近 1h 只有 ${signedPct(lead.change1h)}。`;
+  if (event.type === 'relative_strength') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}；${peer.symbol} ${signedPct(peer.change1h)}，${anchor.symbol} ${signedPct(anchor.change1h)}。`;
+  if (event.type === 'orderbook_imbalance') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，前 20 档深度差 ${signedPct(depth, 1)}；盘口只能作旁证。`;
+  if (event.type === 'late_momentum') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，24h ${signedPct(lead.change24h)}，成交额 ${shortUsd(lead.volume24h)}。`;
+  return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}、24h ${signedPct(lead.change24h)}，相对 ${anchor.symbol} 的 1h 差值为 ${signedPct(relAnchor)}。`;
+}
+function optionalContext(pack = {}) {
+  const unavailable = /暂无可用|数据缺失|数据不足|本轮不使用|不强行写/;
+  const lines = [];
+  for (const value of [pack.stockFacts, pack.stockTakeaways, pack.aiSectorFacts, pack.aiTakeaways]) {
+    const text = String(value || '').trim();
+    if (text && !unavailable.test(text)) lines.push(text);
+  }
+  const news = Array.isArray(pack.externalIntel?.newsItems) ? pack.externalIntel.newsItems.slice(0, 2) : [];
+  if (news.length) lines.push(`可核对新闻：${news.map(x => `${x.source}: ${x.title}`).join('；')}`);
+  const macro = String(pack.externalIntel?.macroNotes || '').trim();
+  if (macro) lines.push(`人工备注：${macro.slice(0, 400)}`);
+  return lines.join('\n') || '无额外上下文；不得补写新闻、KOL、链上或宏观原因。';
+}
 const FACTUAL_LABEL_EXEMPTIONS = new Set(['现价', '1h', '4h', '24h']);
 function effectiveBannedPhrases(settings = getSettings(), extras = []) {
   return [...new Set([...extras, ...DEFAULT_BANNED_PHRASES, ...(settings.bannedPhrases || [])]
@@ -43,6 +82,8 @@ function selectPostAngle(pack = {}) {
     funding_dislocation: { id: 'funding_dislocation', instruction: '围绕永续资金成本写：说清是哪一侧在付费、仓位是否拥挤，以及价格需要怎样变化才会验证判断。注明这是跨交易所参照，不要冒充 Binance 数据。' },
     cross_market_confirmation: { id: 'cross_market_confirmation', instruction: '围绕币圈与传统市场的同向验证写，但主角仍是加密货币；传统资产只引用一到两个，不写成美股复盘，也不要把相关性说成因果。' },
     momentum_shift: { id: 'momentum_shift', instruction: '直接说清 24h 方向与最近 1h 为什么反向：是加速结束、资金换手还是短线转弱；只选一个解释，不罗列全部指标。' },
+    liquid_momentum: { id: 'liquid_momentum', instruction: '重点说这次短线变化有真实成交规模，不是小额异动；只比较一次大盘，不罗列盘口。' },
+    volume_without_direction: { id: 'volume_without_direction', instruction: '重点写“成交活跃却没有形成方向”这层矛盾，解释它意味着分歧而不是趋势；不要硬写成看多或看空。' },
     orderbook_imbalance: { id: 'orderbook_imbalance', instruction: '盘口最多占一句，只作辅助证据；主旨必须来自价格行为、成交或相对强弱，不能再写成“挂单是否与走势一致”的固定分析。' },
     late_momentum: { id: 'late_momentum', instruction: '波动已经发生，正文判断增量资金是否还在，不要用“热闹、追高、拿不回”这些套话。' },
     sector_rotation: { id: 'sector_rotation', instruction: '只写板块内部注意力如何迁移，以及主角为何胜出或掉队；不要平均介绍三个币。' },
@@ -51,16 +92,16 @@ function selectPostAngle(pack = {}) {
   if (eventAngles[event.type]) return eventAngles[event.type];
   const options = [];
   if (stockAiStrongCryptoLag) options.push({ id: 'ai_stock_hot_crypto_cold', instruction: '如果提 AI，只写外面热、币圈这边没跟上；不要写成美股复盘，也不要写“承接没打开”。' });
-  if (aiSymbols.has(String(lead.symbol || '').toUpperCase()) && !/不足|缺失/.test(String(pack.aiTakeaways || ''))) options.push({ id: 'ai_coin_attention', instruction: '主角是 AI 币时，写它在 AI 币里有没有被人多看一眼；不要写技术计划。' });
-  if (lead1h > 1.2 && (anchor1h < -0.1 || anchor24h < 0)) options.push({ id: 'btc_eth_not_lifting', instruction: 'BTC/ETH 没把气氛托起来，小币自己动时只写“这波容易被晾在半路”的意思，不要用风控术语。' });
-  if (lead24h > 18 || Math.abs(lead1h) > 3) options.push({ id: 'move_already_loud', instruction: '主角波动已经很显眼，重点写“热闹已经在价格里”，别给开仓计划。' });
-  if (lead1h > 0.6 && lead24h > 0) options.push({ id: 'needs_follow_through', instruction: '写它看起来有点意思，但真正要看后面有没有人继续抬，不要写回踩、承接、止损。' });
-  if (['meme', 'contract-meme'].includes(lead.bucket) && lead1h < 0) options.push({ id: 'meme_attention_fading', instruction: 'meme 热度变淡时，写注意力被别的票抢走；不要写交易计划。' });
-  if (lead1h > 1 && numeric(peer.change1h) < 0) options.push({ id: 'attention_rotation', instruction: '写市场注意力从一个币挪到另一个币；peer 和 anchor 只做陪衬。' });
+  if (aiSymbols.has(String(lead.symbol || '').toUpperCase()) && !/不足|缺失/.test(String(pack.aiTakeaways || ''))) options.push({ id: 'ai_coin_attention', instruction: '主角是 AI 币时，写它在同板块里的成交和相对强弱是否占优；不要写技术计划。' });
+  if (lead1h > 1.2 && (anchor1h < -0.1 || anchor24h < 0)) options.push({ id: 'btc_eth_not_lifting', instruction: 'BTC/ETH 没同步走强时，说清小币独立上涨的局限，不用“半路、顺风、容错”这类套话。' });
+  if (lead24h > 18 || Math.abs(lead1h) > 3) options.push({ id: 'move_already_loud', instruction: '波动已经很显眼，判断后续成交是否还能匹配，不用“热闹已经在价格里”之类比喻。' });
+  if (lead1h > 0.6 && lead24h > 0) options.push({ id: 'needs_follow_through', instruction: '判断短线强度是否有成交规模支持，直接说结论，不写回踩、承接、止损。' });
+  if (['meme', 'contract-meme'].includes(lead.bucket) && lead1h < 0) options.push({ id: 'meme_attention_fading', instruction: 'meme 降温时，用成交和相对强弱说明资金是否转移，不写交易计划。' });
+  if (lead1h > 1 && numeric(peer.change1h) < 0) options.push({ id: 'attention_rotation', instruction: '写同组币之间的资金偏好变化；peer 和 anchor 只用一句陪衬。' });
   const fallback = [
-    { id: 'one_human_point', instruction: '只写一个人话主旨：为什么这个币此刻值得点开，或者为什么只是看着热闹。' },
-    { id: 'attention_vs_price', instruction: '围绕“价格动了，但注意力/买盘/情绪有没有跟上”写，不要像策略单。' },
-    { id: 'one_level_only', instruction: '最多写一个关键位置，表达成“拿不回来/过不去/站上才有意思”，不要写触发、失效、止损。' }
+    { id: 'one_human_point', instruction: '只写一个具体主旨：这段价格变化说明了什么，不能用换币名也成立的泛话。' },
+    { id: 'price_vs_participation', instruction: '围绕价格变化与成交参与是否匹配来写，不要像策略单。' },
+    { id: 'one_level_only', instruction: '最多写一个关键位置，说明位置上下对应的市场含义；不要写触发、失效、止损。' }
   ];
   return seededPick(options.length ? options : fallback, seed);
 }
@@ -73,32 +114,32 @@ function selectStyleCard(pack = {}) {
   const event = pack.marketEvent || {};
   const options = [
     {
-      id: 'sharp_verdict',
-      instruction: '写成 2 到 3 句短评：先给一个鲜明判断，再用一条证据解释。可以没有关键位，也不要固定补反面条件。'
+      id: 'plain_desk_note',
+      instruction: '像发给熟悉市场的朋友：先说结论，再补一条最关键的事实。用直白中文，不造比喻。'
     },
     {
       id: 'misread_market',
       instruction: '指出多数人最容易看错的一点，再解释真正该看的是什么；不要使用“别只看”作为固定开头。'
     },
     {
-      id: 'attention_story',
-      instruction: '把数据写成注意力变化：资金为什么转向主角、为什么正在离开，或者为什么热度没有扩散。不要逐项报指标。'
+      id: 'what_changed',
+      instruction: '只解释和前一个周期相比发生了什么变化，以及这会怎样改变对主角的判断。'
     },
     {
       id: 'single_level_story',
-      instruction: '只围绕一个关键位置解释市场在争什么；不写成交额和振幅，不给完整操作方案。'
+      instruction: '只围绕一个关键位置解释价格在位置上方和下方分别代表什么；不写成交额和振幅，不给完整操作方案。'
     },
     {
       id: 'relative_vote',
-      instruction: '把 peer 和 anchor 压缩到同一个短句里，只回答主角是在吸引资金还是失去资金；不要写“相对差拉开”。'
+      instruction: '把 peer 和 anchor 压缩到同一个短句里，只回答主角相对更强还是更弱；不要写“相对差拉开”。'
     },
     {
       id: 'clean_chart_caption',
-      instruction: '像给一张图配的人话说明：一个发现、一个含义，全文尽量不超过三句；不要装成交易台报告。'
+      instruction: '像给一张真实行情图配说明：一个发现、一个含义，全文尽量不超过三句；不要装成交易台报告。'
     },
     {
       id: 'genuine_question',
-      instruction: '正文先给判断，结尾可以留一个与本轮证据直接相关的问题，引发讨论；禁止自问自答，禁止泛问“还能涨吗”。'
+      instruction: '正文先给判断，结尾可以留一个能让交易者表达不同看法的具体问题；禁止自问自答，禁止泛问“还能涨吗”。'
     }
   ];
   if (['funding_dislocation', 'price_oi_divergence', 'crowded_positioning', 'liquidation_map'].includes(event.type)) {
@@ -178,7 +219,8 @@ function recentPostBrief(settings = getSettings()) {
 const TRACKED_CLICHES = [
   '热闹', '拿不回', '点开', '容易', '看点', '慢慢挪', '留得住', '卡在半路', '多看一眼', '值得看',
   '这一截', '同场', '相对差', '撑在那里', '撑在场内', '没被顺手拆', '只是一条证据', '快照本身',
-  '小时', '日内振幅', '挂单与价格', '挂单和价格', '后面就看'
+  '小时', '日内振幅', '挂单与价格', '挂单和价格', '后面就看', '注意力', '谁先拿下', '才谈得上',
+  '更像在', '这边短线', '有人愿意', '关键位置', '暂时还没', '真正跟上'
 ];
 function recentOverusedPhrases(limit = 40) {
   const rows = listRuns(Math.max(60, limit)).filter(r => r.postText && r.status === 'published').slice(0, limit);
@@ -193,14 +235,26 @@ function editorialBrief(pack = {}) {
   const reasons = (event.reasons || []).map(x => x.reason).join('、');
   const emojiStyle = selectEmojiStyle(pack);
   const styleCard = selectStyleCard(pack);
+  const lead = pack.trio?.lead || {};
+  const seed = `payoff:${pack.generatedAt || ''}:${lead.symbol || ''}:${event.type || ''}`;
+  const readerPayoff = seededPick([
+    '纠正一个最容易误读的数据点',
+    '解释价格变化是否得到真实参与支持',
+    '指出主角相对同组和大盘究竟强在哪里或弱在哪里',
+    '给出一个会改变当前判断的观察点'
+  ], seed);
   return [
     `本轮唯一论点：${event.claim || `${pack.trio?.lead?.symbol} 当前的价格行为值得核对`}`,
     `事件类型：${event.type || 'relative_strength'}；方向倾向：${event.stance || 'mixed'}；发布价值分：${event.score ?? '--'}/100；置信度：${event.confidence || 'unknown'}`,
-    `最强证据：${reasons || '仅使用给定 facts 中最相关的一项'}`,
+    `读者收获：${readerPayoff}`,
+    `必须优先核对的证据：${evidenceFocus(pack)}`,
+    `其他可选证据：${reasons || '仅使用给定 facts 中最相关的一项'}`,
     `本轮表达方式：${styleCard.instruction}`,
-    '开头不能是 Cashtag、价格或涨跌幅；先写一个能让人停下来的判断，再自然带出主角。',
+    '先在内部拟 3 个完全不同的开头，淘汰最像近期正文的两个；不要输出草稿。',
+    '开头不能是 Cashtag、价格或涨跌幅；第一句必须是主角专属的判断，不能换个币名仍然成立。',
+    '用正常盘友聊天的直白中文，少形容词，不写“接戏、争位置、立方向、热闹留不住”一类拟人化套话。',
     '三个 Cashtag 必须出现，但只有 lead 可以展开；peer/anchor 只放在一个短句里，不得分别报数据。',
-    '最多保留一个关键数字。盘口、关键位、风险提醒三者最多选择一个，不要每篇全部写齐。',
+    '最多保留两个关键数字。盘口、关键位、风险提醒三者最多选择一个，不要每篇全部写齐。',
     `表情符号策略：${emojiStyle.instruction} 全文最多 2 个；禁用 🚀、🤑、💯，不要连续堆叠。`
   ].join('\n');
 }
@@ -241,9 +295,11 @@ function renderTemplate(template, pack, settings = getSettings()) {
     TRADE_PLAN_JSON: pack.tradePlan ? JSON.stringify(pack.tradePlan, null, 2) : '',
     RECENT_POSTS: recentPostBrief(settings),
     MARKET_EVENT_JSON: JSON.stringify(pack.marketEvent || {}, null, 2),
+    EVIDENCE_FOCUS: evidenceFocus(pack),
     EDITORIAL_BRIEF: editorialBrief(pack),
     RECENT_OVERUSED_PHRASES: overused.length ? overused.map(x => `${x.phrase}（近期出现 ${x.count} 次）`).join('、') : '无',
     EXTERNAL_INTEL_JSON: pack.externalIntel ? JSON.stringify(pack.externalIntel, null, 2) : '',
+    OPTIONAL_CONTEXT: optionalContext(pack),
     STOCK_CASHTAGS: pack.stockCashtags || '',
     MACRO_CASHTAGS: pack.macroCashtags || '',
     AI_SECTOR_CASHTAGS: pack.aiSectorCashtags || '',
@@ -621,13 +677,13 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 硬性要求：
 1. 字数必须在 ${min} 到 ${max} 个中文字符之间，不能超过 ${max}。
 2. 必须保留并自然提到这 3 个 Cashtag：${tags}。
-3. 正文只写一个盘中观点：这个币为什么此刻值得点开，或者为什么只是看着热闹。
+3. 正文只写一个盘中观点：这次变化是真强、真弱、分歧，还是只有成交没有方向。
 4. 只能使用 facts / takeaways / market pack 里的真实数据，禁止编造。
 5. 不要写交易计划，不要写开多/开空/进场/止损/失效/这单我不碰。
 6. 最多写 1 到 2 个关键数据；不要把现价、1h、4h、24h、成交额、盘口全部列一遍。
-7. 不得以任何 Cashtag、价格、涨跌幅、“这轮/这笔/这单/现在/偏多/偏空/不追/追高”开头；第一句先给一个具体判断，再自然带出主角。
+7. 不得以任何 Cashtag、价格、涨跌幅、“这轮/这笔/这单/现在/偏多/偏空/不追/追高”开头；第一句必须是主角专属判断，不能换币名仍然成立。
 8. 不要写“反抽/承接/压住手/容错低/失效/我的处理是/计划偏多/计划偏空/条件计划/只做条件”。
-9. 只可以轻轻带一个位置，比如“拿不回 0.084 就没太多看点”，不要写成策略单。
+9. 最多带一个位置，并说明位置上下改变了什么判断；不要写成策略单。
 10. 不要标题、不要项目符号、不要免责声明、不要报告腔。
 11. 如果美股/ETF或AI板块参照缺失，正文不要写“暂无数据/数据缺失/本轮不使用”，直接忽略缺失部分。
 12. 禁止出现这些表达：${effectiveBannedPhrases(settings).join('、')}。
@@ -751,4 +807,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext };

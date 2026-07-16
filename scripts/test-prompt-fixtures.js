@@ -1,7 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { renderTemplate, validatePostText, selectPostAngle, selectEmojiStyle, editorialBrief } = require('../src/generator');
+const { renderTemplate, validatePostText, selectPostAngle, selectEmojiStyle, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
@@ -67,8 +67,14 @@ function basePack(extra = {}) {
 
 (function noStockDataDoesNotInvent() {
   const rendered = renderTemplate(template, basePack(), baseSettings());
-  assert(rendered.includes('暂无可用美股/ETF行情数据。'));
-  assert(rendered.includes('美股参照数据缺失，本轮不使用美股作为判断依据。'));
+  assert(!rendered.includes('暂无可用美股/ETF行情数据。'));
+  assert(!rendered.includes('美股参照数据缺失，本轮不使用美股作为判断依据。'));
+  assert(rendered.includes('AI币池短线参照'));
+  const emptyContextPack = basePack({
+    aiSectorFacts: '暂无可用AI板块行情数据。',
+    aiTakeaways: 'AI板块数据不足，本轮不强行写AI联动。'
+  });
+  assert(optionalContext(emptyContextPack).includes('无额外上下文'));
 })();
 
 (function stockAiStrongCryptoWeakPrompt() {
@@ -98,7 +104,7 @@ function basePack(extra = {}) {
   assert(style.emojis.length <= 2);
   assert(editorialBrief(pack).includes('全文最多 2 个'));
   const rendered = renderTemplate(template, pack, baseSettings());
-  assert(rendered.includes('本轮表情策略'));
+  assert(rendered.includes('表情符号策略'));
 })();
 
 (function marketPackJsonSerializable() {
@@ -114,7 +120,7 @@ function basePack(extra = {}) {
   assert(event.score > 0);
   assert(event.subject === 'RENDER');
   assert(event.claim);
-  assert(['orderbook_imbalance', 'late_momentum', 'relative_strength', 'momentum_shift'].includes(event.type));
+  assert(['orderbook_imbalance', 'late_momentum', 'liquid_momentum', 'volume_without_direction', 'relative_strength', 'momentum_shift'].includes(event.type));
   attachMarketQuality(pack);
   assert.strictEqual(pack.publishScore, pack.marketEvent.score);
   assert.doesNotThrow(() => JSON.stringify(pack.marketEvent));
@@ -194,7 +200,7 @@ function basePack(extra = {}) {
     },
     marketIntel: { symbols: { RENDER: { depth: { available: true, imbalance: -60 } } } }
   });
-  assert.strictEqual(deriveMarketEvent(pack).type, 'late_momentum');
+  assert(['late_momentum', 'liquid_momentum'].includes(deriveMarketEvent(pack).type));
 })();
 
 (function dynamicRankingBalancesLiquidityAndVolatility() {
@@ -208,12 +214,28 @@ function basePack(extra = {}) {
   const liquid = { symbol: 'LIQUID', bucket: 'contract-beta', change1h: 2, change24h: 6, amplitude24h: 10, volume24h: 1000000000 };
   const thin = { symbol: 'THIN', bucket: 'contract-beta', change1h: 2, change24h: 6, amplitude24h: 10, volume24h: 5000000 };
   assert(rankScore(liquid, anchors, recent, { dynamicUniverse: true }) > rankScore(thin, anchors, recent, { dynamicUniverse: true }));
+  const known = { symbol: 'ZEC', bucket: 'beta', change1h: 1, change24h: 5, amplitude24h: 8, volume24h: 35000000 };
+  const unknown = { ...known, symbol: 'UNKNOWN', bucket: 'contract-beta' };
+  assert(rankScore(known, anchors, recent, { dynamicUniverse: true }) > rankScore(unknown, anchors, recent, { dynamicUniverse: true }));
+})();
+
+(function focusedPromptOmitsHugeMarketPack() {
+  const rendered = renderTemplate(template, basePack({ hiddenMarketPackMarker: 'DO_NOT_SEND_FULL_PACK' }), baseSettings());
+  assert(!rendered.includes('DO_NOT_SEND_FULL_PACK'));
+  assert(rendered.includes(evidenceFocus(basePack())));
 })();
 
 (function bannedPhraseValidation() {
   const text = '$RENDER 这波就是主线，$FET 只是参照，$BTC 没拖后腿；站上 $7.25 再看，跌回 $6.90 就放弃。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
   assert(validation.errors.some(e => e.includes('banned_phrase:主线')));
+})();
+
+(function aiLikeMetaphorValidation() {
+  const text = '成交还在，$RENDER 却没有继续接戏；$FET 与 $BTC 只作参照，这里更像多空在争。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  assert(validation.errors.some(e => e.includes('banned_phrase:接戏')));
+  assert(validation.errors.some(e => e.includes('banned_phrase:多空在争')));
 })();
 
 (function formulaicTradePlanValidation() {

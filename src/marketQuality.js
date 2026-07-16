@@ -32,6 +32,8 @@ function deriveMarketEvent(pack = {}) {
   const relAnchor = n(lead.change1h) - n(anchor.change1h);
   const lead1h = n(lead.change1h);
   const lead24h = n(lead.change24h);
+  const leadVolume24h = n(lead.volume24h);
+  const leadAmplitude24h = n(lead.amplitude24h);
   const depth = n(intel.depth?.imbalance);
   const oiChange = n(cg.openInterest?.changePct ?? intel.openInterestValueChange5m);
   const longRatio = n(cg.longShort?.longPercent);
@@ -69,6 +71,8 @@ function deriveMarketEvent(pack = {}) {
   const momentumShift = Math.abs(lead24h) >= 8 && Math.abs(lead1h) >= 1.2 && lead1h * lead24h < 0;
   const momentumActive = Math.abs(lead1h) >= 2.5 || (Math.abs(lead1h) >= 1.2 && Math.abs(lead24h) >= 12);
   const relativeActive = Math.abs(relPeer) >= 2 || Math.abs(relAnchor) >= 1.5;
+  const liquidMomentum = leadVolume24h >= 50000000 && Math.abs(lead1h) >= 0.8 && Math.max(Math.abs(relPeer), Math.abs(relAnchor)) >= 0.6;
+  const volumeWithoutDirection = leadVolume24h >= 50000000 && Math.abs(lead1h) <= 0.5 && leadAmplitude24h >= 5;
   const depthActive = available.depth && Math.abs(depth) >= 35;
 
   let type = 'relative_strength';
@@ -92,6 +96,11 @@ function deriveMarketEvent(pack = {}) {
   } else if (momentumShift) {
     type = 'momentum_shift';
     claim = `${lead.symbol} 的 24h 方向与最近 1h 已经反向，短线动量正在换挡`;
+  } else if (liquidMomentum) {
+    type = 'liquid_momentum';
+    claim = lead1h > 0
+      ? `${lead.symbol} 的短线走强有成交规模支撑，不只是小额拉动`
+      : `${lead.symbol} 的短线走弱发生在活跃成交中，不只是盘口噪声`;
   } else if (momentumActive) {
     type = 'late_momentum';
     claim = lead1h > 0
@@ -102,6 +111,9 @@ function deriveMarketEvent(pack = {}) {
     claim = relAnchor >= 0
       ? `${lead.symbol} 最近 1h 明显强于大盘参照`
       : `${lead.symbol} 最近 1h 明显弱于大盘参照`;
+  } else if (volumeWithoutDirection) {
+    type = 'volume_without_direction';
+    claim = `${lead.symbol} 的成交仍活跃，但短线价格没有给出同等强度的方向`;
   } else if (lead.bucket === 'ai' && pack.sector?.crypto_ai_follow?.available) {
     type = 'sector_rotation';
     claim = `${lead.symbol} 在 AI 币内部是否获得独立关注，可以用板块强弱验证`;

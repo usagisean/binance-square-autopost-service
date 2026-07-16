@@ -69,6 +69,11 @@ function priorityBonus(base) {
   const idx = PRIORITY_SYMBOLS.indexOf(base);
   return idx === -1 ? 0 : Math.max(0, 8 - idx * 0.2);
 }
+function isAudienceRelevant(symbol, settings = {}) {
+  const base = String(symbol || '').toUpperCase();
+  const configured = new Set((settings.squareTagSymbols || []).map(s => String(s || '').toUpperCase()));
+  return Boolean(CONTRACT_META[base]) || configured.has(base);
+}
 function buildRecentBias(settings) {
   const posts = getCounter(settings).posts || [];
   const symbolCounts = new Map();
@@ -94,7 +99,10 @@ function rankScore(asset, anchors, recentBias, settings = {}) {
   const abs24h = Math.abs(Number(asset.change24h || 0));
   const quoteVol = Math.max(1, Number(asset.volume24h || 0));
   const logVolume = Math.log10(quoteVol);
-  const volumeBoost = clamp((logVolume - 6) * 5.5, 0, 20);
+  // A post about a liquid market is generally more useful (and more clickable)
+  // than an equally volatile micro market. Movement still matters, but volume
+  // gets enough weight to keep the feed from becoming an obscure-token ticker.
+  const volumeBoost = clamp((logVolume - 6) * 7, 0, 26);
   const relBtc = Number(asset.change1h || 0) - Number(anchors.BTC?.change1h || 0);
   const relEth = Number(asset.change1h || 0) - Number(anchors.ETH?.change1h || 0);
   const rel = Math.max(Math.abs(relBtc), Math.abs(relEth));
@@ -105,16 +113,24 @@ function rankScore(asset, anchors, recentBias, settings = {}) {
   // hand-maintained symbol list. Buckets remain useful only in legacy pool mode.
   const bucketBonus = dynamic ? (asset.bucket === 'anchor' ? -8 : 0) : configuredBucketBonus;
   const activityScore = clamp(abs1h * 2.8, 0, 16) + clamp(abs24h * 0.5, 0, 11) + clamp(amplitude * 0.2, 0, 9) + clamp(rel * 1.8, 0, 10);
-  const thinMarketPenalty = quoteVol < 10000000 ? 5 : 0;
-  const noisyTailPenalty = quoteVol < 25000000 && amplitude > 45 ? 5 : 0;
+  const thinMarketPenalty = quoteVol < 10000000 ? 7 : quoteVol < 20000000 ? 2 : 0;
+  const noisyTailPenalty = quoteVol < 25000000 && amplitude > 45 ? 7 : 0;
   const squareTagSet = new Set((settings.squareTagSymbols || []).map(s => String(s).toUpperCase()));
   const squareTagBonus = !dynamic && settings.preferSquareTagSymbols !== false && squareTagSet.has(asset.symbol) ? 6 : 0;
+  // Dynamic discovery remains market-wide. This is only a soft editorial
+  // preference: unknown symbols can still win when their live signal is strong.
+  const audienceRelevant = isAudienceRelevant(asset.symbol, settings);
+  const audienceBonus = dynamic && audienceRelevant ? 6 : 0;
+  const unknownSymbolPenalty = dynamic && !audienceRelevant ? 4 : 0;
+  const deepLiquidityBonus = dynamic ? (quoteVol >= 100000000 ? 2.5 : quoteVol >= 40000000 ? 1 : 0) : 0;
   const cooldownPenalty = recentBias.cooldownSymbols?.has(asset.symbol) ? 1000 : 0;
   const freqPenalty = (recentBias.symbolCounts.get(asset.symbol) || 0) * 5.5;
   const last1Penalty = recentBias.last1 === asset.symbol ? 16 : 0;
   const last2Penalty = recentBias.last2.includes(asset.symbol) ? 7 : 0;
   const last5Penalty = recentBias.last5.includes(asset.symbol) ? 3 : 0;
-  return activityScore + volumeBoost + bucketBonus + squareTagBonus + (dynamic ? 0 : priorityBonus(asset.symbol)) - thinMarketPenalty - noisyTailPenalty - cooldownPenalty - freqPenalty - last1Penalty - last2Penalty - last5Penalty;
+  return activityScore + volumeBoost + bucketBonus + squareTagBonus + audienceBonus + deepLiquidityBonus
+    + (dynamic ? 0 : priorityBonus(asset.symbol)) - unknownSymbolPenalty - thinMarketPenalty
+    - noisyTailPenalty - cooldownPenalty - freqPenalty - last1Penalty - last2Penalty - last5Penalty;
 }
 async function getIntervalChange(baseUrl, symbol, interval = '1h', options = {}) {
   const rows = await getJson(`${baseUrl}/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=2`, options);
@@ -191,12 +207,23 @@ function chooseTrio(rows, oneHourMap, fourHourMap, recentBias, source, isFutures
   if (!anchors.BTC.price || !anchors.ETH.price) throw new Error('missing_anchor_assets');
   const anchor = Math.abs(anchors.BTC.change1h) >= Math.abs(anchors.ETH.change1h) ? anchors.BTC : anchors.ETH;
   const squareTagSet = new Set((settings.squareTagSymbols || []).map(s => String(s).toUpperCase()));
-  const scored = assets.filter(a => a.symbol !== anchor.symbol).map(a => ({ ...a, score: rankScore(a, anchors, recentBias, settings), squareTagPreferred: squareTagSet.has(a.symbol) })).sort((a, b) => b.score - a.score);
+  const scored = assets.filter(a => a.symbol !== anchor.symbol).map(a => ({
+    ...a,
+    score: rankScore(a, anchors, recentBias, settings),
+    squareTagPreferred: squareTagSet.has(a.symbol),
+    audienceRelevant: isAudienceRelevant(a.symbol, settings)
+  })).sort((a, b) => b.score - a.score);
   const preferTagged = settings.dynamicUniverse === false && settings.preferSquareTagSymbols !== false;
   const taggedLead = scored.slice(0, 15).find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && a.squareTagPreferred && !recentBias.cooldownSymbols?.has(a.symbol));
   const lead = (preferTagged ? taggedLead : null) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && !recentBias.cooldownSymbols?.has(a.symbol)) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && a.symbol !== recentBias.last1) || scored.find(a => a.symbol !== 'BTC' && a.symbol !== 'ETH' && !recentBias.last2.includes(a.symbol)) || scored[0];
   if (!lead) throw new Error('no_lead_asset');
-  const peer = scored.find(a => a.symbol !== lead.symbol && !recentBias.last2.includes(a.symbol) && ['contract-meme', 'bnb-beta', 'meme', 'beta', 'major-beta', 'ai', 'high-vol', lead.bucket].includes(a.bucket)) || scored.find(a => a.symbol !== lead.symbol) || anchor;
+  const peerBuckets = ['contract-meme', 'bnb-beta', 'meme', 'beta', 'major-beta', 'ai', 'high-vol', 'defi', 'infra', lead.bucket];
+  const peerCandidates = scored.filter(a => a.symbol !== lead.symbol && !recentBias.last2.includes(a.symbol));
+  const peer = peerCandidates.find(a => a.audienceRelevant && peerBuckets.includes(a.bucket))
+    || peerCandidates.find(a => a.audienceRelevant)
+    || peerCandidates.find(a => peerBuckets.includes(a.bucket))
+    || scored.find(a => a.symbol !== lead.symbol)
+    || anchor;
   if (!peer) throw new Error('no_peer_asset');
   return {
     ok: true, source, generatedAt: new Date().toISOString(),
@@ -204,7 +231,7 @@ function chooseTrio(rows, oneHourMap, fourHourMap, recentBias, source, isFutures
     allAssets: assets,
     facts: buildFacts(lead, peer, anchor, isFutures),
     takeaways: buildTakeaways(lead, peer, anchor, isFutures),
-    candidates: scored.slice(0, 12).map(a => ({ symbol: a.symbol, bucket: a.bucket, score: Number(a.score.toFixed(2)), price: a.price, change1h: a.change1h, change4h: a.change4h, change24h: a.change24h, amplitude24h: a.amplitude24h, volume24h: a.volume24h }))
+    candidates: scored.slice(0, 12).map(a => ({ symbol: a.symbol, bucket: a.bucket, audienceRelevant: a.audienceRelevant, score: Number(a.score.toFixed(2)), price: a.price, change1h: a.change1h, change4h: a.change4h, change24h: a.change24h, amplitude24h: a.amplitude24h, volume24h: a.volume24h }))
   };
 }
 function anchorFromRows(rows, oneHourMap, fourHourMap, id, symbol, isFutures) {

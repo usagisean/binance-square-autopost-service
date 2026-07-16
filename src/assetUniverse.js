@@ -57,7 +57,10 @@ const PRIORITY_SYMBOLS = unique([
   ...LEGACY_PRIORITY_SYMBOLS
 ]);
 
-const EXCLUDED_BASES = new Set(['USDC', 'FDUSD', 'TUSD', 'BUSD', 'USDP', 'EUR', 'GBP', 'TRY', 'UAH', 'RUB', 'AUD', 'BRL']);
+const EXCLUDED_BASES = new Set([
+  'USDC', 'FDUSD', 'TUSD', 'BUSD', 'USDP', 'USD1', 'USDE', 'USDS', 'DAI',
+  'EUR', 'GBP', 'TRY', 'UAH', 'RUB', 'AUD', 'BRL'
+]);
 
 const MEME_SYMBOL_PATTERN = /DOGE|PEPE|WIF|BONK|BOME|FLOKI|POPCAT|PENGU|FART|SHIB|MEME|CHILL|MOODENG|MOG|NEIRO|ACT|TST|TURBO|BRETT|MEW|RAVE|CHIP|BSB|BABY/i;
 
@@ -74,7 +77,9 @@ const DEFAULT_BANNED_PHRASES = unique([
   '我的计划很简单', '我的处理是', '计划偏多', '计划偏空', '条件计划', '只做条件', '这轮我只按', '这轮只看', '这笔我还是按', '我这边只盯',
   '现在更适合按条件处理', '参照看', '先看分化', '继续观察', '等确认', '宏观层面', '叙事驱动', '资金共振', '多维度分析', '综合来看', '值得重点关注',
   '这单我不碰', '这单不碰', '我不碰', '压住手', '反抽', '承接', '容错低', '失效', '止损', '进场', '开多', '开空',
-  '主流没配合', '外部没给顺风', '顺风', '不做也是交易', '交易计划', '触发位', '放弃条件'
+  '主流没配合', '外部没给顺风', '顺风', '不做也是交易', '交易计划', '触发位', '放弃条件',
+  '接戏', '多空在争', '立方向', '消耗动量', '价格已经动过一轮', '注意力却还没真正跟上',
+  '热闹留不住', '卡在半路', '值得点开', '值得看', '多看一眼', '谁先拿下', '才谈得上'
 ]);
 
 function cashtagList(symbols = []) {
