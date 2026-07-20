@@ -746,8 +746,15 @@ function validatePostText(text, pack, settings = getSettings()) {
   if (!['off', 'opinion', 'soft_opinion'].includes(tradeMode) && settings.includeTradePlan !== false && pack.tradePlan) {
     if (!/(偏多|偏空|看多|看空|观望|不追|不碰|回踩|突破|跌破|放弃|等|空仓|少碰|过滤)/.test(clean)) errors.push('missing_trade_stance');
   }
-  const metricHits = new Set(clean.match(/现价|1h|4h|24h|成交额|振幅|前20档|点差|买盘厚|卖压厚|资金费率|持仓|OI|主动买卖比/g) || []);
-  if (metricHits.size > 4) errors.push(`too_many_metrics:${metricHits.size}`);
+  // Count evidence families rather than raw labels. A single order-book sentence
+  // may naturally contain “前20档/点差/卖压厚”, and “OI/持仓” are synonyms;
+  // treating each word as a separate metric caused useful drafts to be rejected.
+  const metricFamilies = [
+    /现价/, /1h/i, /4h/i, /24h/i, /成交额|振幅/,
+    /前20档|点差|买盘厚|卖压厚/, /资金费率/, /持仓|\bOI\b/i, /主动买卖比/
+  ];
+  const metricCount = metricFamilies.filter(pattern => pattern.test(clean)).length;
+  if (metricCount > 5) errors.push(`too_many_metrics:${metricCount}`);
   for (const word of ['价格', '节奏', '方向', '波动', '注意力', '挂单', '热度', '晃']) {
     const count = clean.split(word).length - 1;
     if (count >= 3) errors.push(`repeated_word:${word}:${count}`);
