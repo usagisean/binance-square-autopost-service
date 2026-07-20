@@ -100,11 +100,11 @@ function basePack(extra = {}) {
 (function emojiStyleIsVariedButBounded() {
   const pack = basePack();
   const style = selectEmojiStyle(pack);
-  assert(['none', 'one', 'two'].includes(style.id));
-  assert(style.emojis.length <= 2);
-  assert(editorialBrief(pack).includes('全文最多 2 个'));
+  assert(['none', 'one'].includes(style.id));
+  assert(style.emojis.length <= 1);
+  assert(editorialBrief(pack).includes('全文最多 1 个'));
   const rendered = renderTemplate(template, pack, baseSettings());
-  assert(rendered.includes('表情符号策略'));
+  assert(rendered.includes('表情：'));
 })();
 
 (function marketPackJsonSerializable() {
@@ -241,25 +241,45 @@ function basePack(extra = {}) {
   const rendered = renderTemplate(template, basePack({ hiddenMarketPackMarker: 'DO_NOT_SEND_FULL_PACK' }), baseSettings());
   assert(!rendered.includes('DO_NOT_SEND_FULL_PACK'));
   assert(rendered.includes(evidenceFocus(basePack())));
-  assert(rendered.includes('每一个币种、股票或 ETF 代码都必须带 `$`'));
+  assert(rendered.includes('每个 Cashtag 后必须保留一个半角空格'));
 })();
 
 (function everyMarketSymbolBecomesClickableCashtag() {
   const raw = '真正有变化的是 RENDER，FET 与 BTC 只作参照；美股 COIN、MSTR 和 QQQ 同时走强，AI 板块只能作背景。已有 $NVDA 不应重复加符号，价格 $7.25 也不能被改写。';
   const normalized = normalizeCashtags(raw, basePack(), baseSettings());
   for (const symbol of ['RENDER', 'FET', 'BTC', 'COIN', 'MSTR', 'QQQ', 'NVDA']) {
-    assert(normalized.includes(`$${symbol}`), `${symbol} should be a cashtag`);
+    assert(new RegExp(`\\$${symbol}(?=\\s|$)`).test(normalized), `${symbol} should have a clickable cashtag boundary`);
   }
   assert(normalized.includes('AI 板块'));
   assert(!normalized.includes('$AI 板块'));
   assert(!normalized.includes('$$'));
   assert(normalized.includes('价格 $7.25'));
+  assert.strictEqual(normalizeCashtags(normalized, basePack(), baseSettings()), normalized, 'cashtag normalization must be idempotent');
+})();
+
+(function squareMobileCashtagBoundaryRegression() {
+  const pack = basePack({
+    trio: {
+      lead: { ...basePack().trio.lead, symbol: 'TLM' },
+      peer: { ...basePack().trio.peer, symbol: 'SOL' },
+      anchor: { ...basePack().trio.anchor, symbol: 'ETH' }
+    }
+  });
+  const settings = baseSettings({ squareTagSymbols: ['TLM', 'SOL', 'ETH', 'PEPE', 'XRP', 'BTC', 'RE'] });
+  const raw = '大涨后短线回落的$TLM这次掉速。和$SOL、$ETH比，$PEPE相对$XRP、$BTC只多出一点；但 $RE 1h 更强。';
+  const normalized = normalizeCashtags(raw, pack, settings);
+  for (const symbol of ['TLM', 'SOL', 'ETH', 'PEPE', 'XRP', 'BTC', 'RE']) {
+    assert(new RegExp(`\\$${symbol}(?=\\s|$)`).test(normalized), `${symbol} should be yellow/clickable on Square`);
+  }
+  assert(normalized.includes('$TLM 这次'));
+  assert(normalized.includes('$SOL 、$ETH 比'));
+  assert.strictEqual(normalizeCashtags(normalized, pack, settings), normalized);
 })();
 
 (function validationReturnsNormalizedTextForPublisher() {
   const raw = '成交重新集中到 RENDER，FET 与 BTC 都没有同步放量；美股 COIN 和 QQQ 只作情绪参照，这次变化更像主角自己的量价选择。';
   const validation = validatePostText(raw, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
-  for (const symbol of ['RENDER', 'FET', 'BTC', 'COIN', 'QQQ']) assert(validation.text.includes(`$${symbol}`));
+  for (const symbol of ['RENDER', 'FET', 'BTC', 'COIN', 'QQQ']) assert(new RegExp(`\\$${symbol}(?=\\s|$)`).test(validation.text));
   assert(!/(^|[^$A-Z0-9])(RENDER|FET|BTC|COIN|QQQ)(?=$|[^A-Z0-9])/.test(validation.text));
 })();
 
@@ -334,10 +354,29 @@ function basePack(extra = {}) {
   assert(validation.errors.some(e => e.startsWith('too_short:')));
 })();
 
-(function configuredMinHasSafetyFloor() {
-  const text = '$RENDER 这波别只看它涨，AI币池里真正有人多看一眼的票不多；$FET 比它弱，$BTC 又没把气氛托起来。它要是连 $7.25 都拿不回来，热度很容易被别的票抢走。真想看，也得等它先把上面那层卖盘吃掉一点，不然就是白热闹。';
-  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 140, maxPostChars: 260 }));
-  assert(!validation.errors.some(e => e.startsWith('too_short:')));
+(function configuredMinimumIsEnforcedExactly() {
+  const text = '成交没有跟着涨幅一起放大，$RENDER 看起来强，实际还缺一轮主动成交；$FET 和 $BTC 同期更平，主角若继续放量，才有理由提高评价。';
+  const length = [...normalizeCashtags(text, basePack(), baseSettings())].length;
+  const tooShort = validatePostText(text, basePack(), baseSettings({ minPostChars: length + 1, maxPostChars: 300 }));
+  assert(tooShort.errors.some(e => e === `too_short:${length}`));
+  const exact = validatePostText(text, basePack(), baseSettings({ minPostChars: length, maxPostChars: 300 }));
+  assert(!exact.errors.some(e => e.startsWith('too_short:')));
+})();
+
+(function longPostsRequireReadableParagraphs() {
+  const sentence = '成交没有跟着涨幅一起放大，$RENDER 的优势仍需要真实买盘验证；$FET 和 $BTC 同期偏平。';
+  const oneLine = `${sentence}${'这段证据只说明主角暂时领先，但还不能把短线变化直接外推。'.repeat(4)}`;
+  const failed = validatePostText(oneLine, basePack(), baseSettings({ minPostChars: 180, maxPostChars: 500 }));
+  assert(failed.errors.includes('missing_paragraph_break'));
+  const twoParagraphs = oneLine.replace('。这段证据', '。\n\n这段证据');
+  const passed = validatePostText(twoParagraphs, basePack(), baseSettings({ minPostChars: 180, maxPostChars: 500 }));
+  assert(!passed.errors.includes('missing_paragraph_break'));
+})();
+
+(function referenceCashtagsCannotBeRepeated() {
+  const text = '成交开始集中到 $RENDER ，它的相对表现先于同组转强。\n\n$FET 和 $BTC 只作一次参照，但 $FET 再次出现就会让正文退化成三币复盘。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 500 }));
+  assert(validation.errors.includes('cashtag_repeated:FET:2'));
 })();
 
 (function unavailablePlaceholderValidation() {
