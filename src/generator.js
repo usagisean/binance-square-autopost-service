@@ -1,11 +1,57 @@
 const { postJson, request } = require('./httpClient');
 const { config } = require('./config');
 const { getSettings, getActivePrompt, getSecrets, getLlmCandidates, listRuns } = require('./store');
-const { ASSET_UNIVERSE, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
+const { ASSET_UNIVERSE, CONTRACT_META, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 
 function cashtag(symbol) { return `$${String(symbol || '').replace(/^\$/, '').toUpperCase()}`; }
 function compactText(text) {
   return String(text || '').replace(/^```[a-z]*\s*/i, '').replace(/```$/i, '').replace(/[“”]/g, '').trim();
+}
+function escapeRegExp(text) {
+  return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function collectCashtagSymbols(pack = {}, settings = getSettings()) {
+  const symbols = new Set();
+  const add = value => {
+    const symbol = String(value || '').replace(/^\$/, '').trim().toUpperCase();
+    if (/^[A-Z0-9]{1,24}$/.test(symbol)) symbols.add(symbol);
+  };
+  const addKeys = value => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) Object.keys(value).forEach(add);
+  };
+
+  Object.values(ASSET_UNIVERSE).flat().forEach(add);
+  Object.keys(CONTRACT_META).forEach(add);
+  (settings.squareTagSymbols || []).forEach(add);
+  [pack.trio?.lead?.symbol, pack.trio?.peer?.symbol, pack.trio?.anchor?.symbol, pack.tradePlan?.symbol, pack.marketEvent?.subject].forEach(add);
+  addKeys(pack.marketIntel?.symbols);
+  addKeys(pack.publicDerivatives?.symbols);
+  addKeys(pack.crypto_core);
+  addKeys(pack.crypto_ai);
+  addKeys(pack.tradfi?.assets);
+  addKeys(pack.stocks?.ai);
+  addKeys(pack.stocks?.crypto_beta);
+  addKeys(pack.stocks?.etf_macro);
+
+  return [...symbols].sort((a, b) => b.length - a.length || a.localeCompare(b));
+}
+function normalizeCashtags(text, pack = {}, settings = getSettings()) {
+  let normalized = String(text || '');
+  const trioSymbols = new Set([
+    pack.trio?.lead?.symbol,
+    pack.trio?.peer?.symbol,
+    pack.trio?.anchor?.symbol
+  ].map(s => String(s || '').toUpperCase()).filter(Boolean));
+
+  for (const symbol of collectCashtagSymbols(pack, settings)) {
+    // “AI” is commonly used as a category name. Only treat it as the Sleepless
+    // AI ticker when it is one of this run's selected assets; otherwise phrases
+    // such as “AI 板块” must remain normal prose.
+    if (symbol === 'AI' && !trioSymbols.has(symbol)) continue;
+    const pattern = new RegExp(`(^|[^$A-Z0-9])(${escapeRegExp(symbol)})(?=$|[^A-Z0-9])`, 'gi');
+    normalized = normalized.replace(pattern, (_match, prefix) => `${prefix}$${symbol}`);
+  }
+  return normalized;
 }
 function numeric(v) {
   const n = Number(v);
@@ -266,7 +312,8 @@ function editorialBrief(pack = {}) {
     `其他可选证据：${reasons || '仅使用给定 facts 中最相关的一项'}`,
     `本轮表达方式：${styleCard.instruction}`,
     '先在内部拟 3 个完全不同的开头，淘汰最像近期正文的两个；不要输出草稿。',
-    `开头不能是 Cashtag、价格或涨跌幅；第一句前 20 个字内要自然出现 ${lead.symbol}（可先不带 $），而且不能换个币名仍然成立。`,
+    `开头不能是 Cashtag、价格或涨跌幅；第一句前 20 个字内要自然出现 ${cashtag(lead.symbol)}，但不能把它放在句首，而且不能换个币名仍然成立。`,
+    '正文出现的每一个币种、股票或 ETF 代码都必须写成 $SYMBOL；不得出现 BTC、ETH、COIN、QQQ 这类不带 $ 的裸代码。',
     '用正常盘友聊天的直白中文，少形容词，不写“接戏、争位置、立方向、热闹留不住”一类拟人化套话。',
     '同一个实词不要反复出现三次；尤其避免连续重复“价格、节奏、方向、波动、注意力”。',
     event.type === 'low_signal' ? '本轮信号弱：只写 2 到 3 句，不用问句，不硬凑关键位，也不要假装出现了重大机会。' : '本轮信号有明确事件：围绕事件下结论，不要扩写成全市场复盘。',
@@ -645,7 +692,10 @@ function maxRecentSimilarity(text, settings = getSettings()) {
 
 function validatePostText(text, pack, settings = getSettings()) {
   const errors = [];
-  const clean = compactText(text);
+  // Cashtags are a publishing feature on Binance Square, not merely a writing
+  // preference. Normalize every known market symbol before any validation and
+  // return this exact normalized text to the publisher.
+  const clean = normalizeCashtags(compactText(text), pack, settings);
   const len = [...clean].length;
   const configuredMin = Number(settings.minPostChars || 180);
   // The prompt can ask for a richer post, but live publishing should not fail
@@ -700,7 +750,7 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 
 硬性要求：
 1. 字数必须在 ${min} 到 ${max} 个中文字符之间，不能超过 ${max}。
-2. 必须保留并自然提到这 3 个 Cashtag：${tags}。
+2. 必须保留并自然提到这 3 个 Cashtag：${tags}；正文出现的其他币种、股票或 ETF 代码也必须统一写成 $SYMBOL，不能裸写。
 3. 正文只写一个盘中观点：这次变化是真强、真弱、分歧，还是只有成交没有方向。
 4. 只能使用 facts / takeaways / market pack 里的真实数据，禁止编造。
 5. 不要写交易计划，不要写开多/开空/进场/止损/失效/这单我不碰。
@@ -713,7 +763,7 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 12. 禁止出现这些表达：${effectiveBannedPhrases(settings).join('、')}。
 13. ${selectEmojiStyle(pack).instruction} 全文最多 2 个；不要使用 🚀、🤑、💯，不要连续堆叠。
 14. “价格、节奏、方向、波动、注意力、挂单、热度”等实词各自最多出现 2 次，删掉同义反复。
-15. 第一句前 20 个字内自然出现主角 ${pack.trio?.lead?.symbol || ''}，但不能以 Cashtag 开头。
+15. 第一句前 20 个字内自然出现主角 ${cashtag(pack.trio?.lead?.symbol || '')}，但不能以 Cashtag 开头。
 
 原文：
 ${text}
@@ -833,4 +883,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, normalizeCashtags, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext };

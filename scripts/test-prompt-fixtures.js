@@ -1,7 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { renderTemplate, validatePostText, selectPostAngle, selectEmojiStyle, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
+const { renderTemplate, validatePostText, normalizeCashtags, selectPostAngle, selectEmojiStyle, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
@@ -241,6 +241,37 @@ function basePack(extra = {}) {
   const rendered = renderTemplate(template, basePack({ hiddenMarketPackMarker: 'DO_NOT_SEND_FULL_PACK' }), baseSettings());
   assert(!rendered.includes('DO_NOT_SEND_FULL_PACK'));
   assert(rendered.includes(evidenceFocus(basePack())));
+  assert(rendered.includes('每一个币种、股票或 ETF 代码都必须带 `$`'));
+})();
+
+(function everyMarketSymbolBecomesClickableCashtag() {
+  const raw = '真正有变化的是 RENDER，FET 与 BTC 只作参照；美股 COIN、MSTR 和 QQQ 同时走强，AI 板块只能作背景。已有 $NVDA 不应重复加符号，价格 $7.25 也不能被改写。';
+  const normalized = normalizeCashtags(raw, basePack(), baseSettings());
+  for (const symbol of ['RENDER', 'FET', 'BTC', 'COIN', 'MSTR', 'QQQ', 'NVDA']) {
+    assert(normalized.includes(`$${symbol}`), `${symbol} should be a cashtag`);
+  }
+  assert(normalized.includes('AI 板块'));
+  assert(!normalized.includes('$AI 板块'));
+  assert(!normalized.includes('$$'));
+  assert(normalized.includes('价格 $7.25'));
+})();
+
+(function validationReturnsNormalizedTextForPublisher() {
+  const raw = '成交重新集中到 RENDER，FET 与 BTC 都没有同步放量；美股 COIN 和 QQQ 只作情绪参照，这次变化更像主角自己的量价选择。';
+  const validation = validatePostText(raw, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  for (const symbol of ['RENDER', 'FET', 'BTC', 'COIN', 'QQQ']) assert(validation.text.includes(`$${symbol}`));
+  assert(!/(^|[^$A-Z0-9])(RENDER|FET|BTC|COIN|QQQ)(?=$|[^A-Z0-9])/.test(validation.text));
+})();
+
+(function dynamicallySelectedSymbolAlsoBecomesCashtag() {
+  const pack = basePack({
+    trio: {
+      lead: { ...basePack().trio.lead, symbol: 'NEWCOIN' },
+      peer: basePack().trio.peer,
+      anchor: basePack().trio.anchor
+    }
+  });
+  assert(normalizeCashtags('真正有变化的是 NEWCOIN，FET 与 BTC 只作参照。', pack, baseSettings()).includes('$NEWCOIN'));
 })();
 
 (function bannedPhraseValidation() {
