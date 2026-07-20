@@ -355,8 +355,8 @@ function renderTemplate(template, pack, settings = getSettings()) {
     STYLE_CARD_ID: styleCard?.id || '',
     EMOJI_STYLE: emojiStyle?.instruction || '',
     EMOJI_STYLE_ID: emojiStyle?.id || '',
-    MIN_POST_CHARS: String(settings.minPostChars || 180),
-    MAX_POST_CHARS: String(settings.maxPostChars || 360),
+    MIN_POST_CHARS: String(settings.minPostChars || 160),
+    MAX_POST_CHARS: String(settings.maxPostChars || 260),
     LEAD: lead,
     PEER: peer,
     ANCHOR: anchor,
@@ -707,10 +707,9 @@ function validatePostText(text, pack, settings = getSettings()) {
   // return this exact normalized text to the publisher.
   const clean = normalizeCashtags(compactText(text), pack, settings);
   const len = [...clean].length;
-  const configuredMin = Number(settings.minPostChars || 180);
+  const configuredMin = Number(settings.minPostChars || 160);
   if (len < configuredMin) errors.push(`too_short:${len}`);
-  if (len > Number(settings.maxPostChars || 360)) errors.push(`too_long:${len}`);
-  if (configuredMin >= 180 && clean.split(/\n+/).map(x => x.trim()).filter(Boolean).length < 2) errors.push('missing_paragraph_break');
+  if (len > Number(settings.maxPostChars || 260)) errors.push(`too_long:${len}`);
   const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '需注意风险', '暂无可用美股/ETF行情数据', '美股参照数据缺失', '本轮不使用美股作为判断依据', '暂无可用AI板块行情数据', 'AI板块数据不足'];
   const banned = effectiveBannedPhrases(settings, fixedBanned);
   for (const phrase of banned) {
@@ -755,8 +754,8 @@ function validationError(validation) {
 }
 
 function repairPromptForPost(text, validation, pack, settings = getSettings()) {
-  const min = Number(settings.minPostChars || 180);
-  const max = Number(settings.maxPostChars || 360);
+  const min = Number(settings.minPostChars || 160);
+  const max = Number(settings.maxPostChars || 260);
   const symbols = [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol];
   const tags = symbols.map(cashtag).join(' ');
   return `下面这条 Binance Square 正文已经生成，但没有通过本地校验：${validation.errors.join(',')}。
@@ -765,7 +764,7 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 
 硬性要求：
 1. 字数必须在 ${min} 到 ${max} 个中文字符之间，不能超过 ${max}。
-2. 写成 2~3 个短段落，用空行分隔；每段必须提供新信息，不能靠同义句凑字。
+2. 根据内容选择 1 个紧凑段落或 2 个短段落，不要每篇固定同一种结构；若分段，每段必须提供新信息。
 3. 必须保留并自然提到这 3 个 Cashtag：${tags}；每个 Cashtag 后必须有半角空格，例如“$BTC 走强”“$SOL 和 $ETH 同步”。其他市场代码也必须写成 $SYMBOL。
 4. 正文只围绕一个明确判断：眼下偏强、偏弱，还是证据冲突；必须解释原因，不能只贴“真强/真弱/分歧”标签。
 5. 只能使用 facts / takeaways / market pack 里的真实数据，禁止编造。
@@ -837,6 +836,7 @@ async function generatePost(pack) {
         const text = await callOpenAIWithCandidate(renderedPrompt, candidate);
         const validation = validatePostText(text, pack, settings);
         if (!validation.ok) {
+          console.warn(`[llm] validation failed: ${label}: ${validationError(validation)}`);
           try {
             const repaired = await repairPostText(text, validation, pack, settings, candidate);
             if (repaired.validation.ok) {
@@ -853,6 +853,7 @@ async function generatePost(pack) {
                 attempts
               };
             }
+            console.warn(`[llm] repair validation failed: ${label}: ${validationError(repaired.validation)}`);
             attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: false, error: `${validationError(validation)}; repair_failed:${validationError(repaired.validation)}`, text: validation.text, repairedText: repaired.validation.text });
           } catch (repairErr) {
             attempts.push({ channelId: candidate.channelId, channelName: candidate.channelName, model: candidate.model, ok: false, error: `${validationError(validation)}; repair_error:${repairErr.message || String(repairErr)}`, text: validation.text });

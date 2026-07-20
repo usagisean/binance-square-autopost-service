@@ -363,14 +363,14 @@ function basePack(extra = {}) {
   assert(!exact.errors.some(e => e.startsWith('too_short:')));
 })();
 
-(function longPostsRequireReadableParagraphs() {
+(function paragraphLayoutRemainsEditorialNotAPublishGate() {
   const sentence = '成交没有跟着涨幅一起放大，$RENDER 的优势仍需要真实买盘验证；$FET 和 $BTC 同期偏平。';
   const oneLine = `${sentence}${'这段证据只说明主角暂时领先，但还不能把短线变化直接外推。'.repeat(4)}`;
-  const failed = validatePostText(oneLine, basePack(), baseSettings({ minPostChars: 180, maxPostChars: 500 }));
-  assert(failed.errors.includes('missing_paragraph_break'));
+  const oneLineValidation = validatePostText(oneLine, basePack(), baseSettings({ minPostChars: 180, maxPostChars: 500 }));
+  assert(!oneLineValidation.errors.includes('missing_paragraph_break'));
   const twoParagraphs = oneLine.replace('。这段证据', '。\n\n这段证据');
-  const passed = validatePostText(twoParagraphs, basePack(), baseSettings({ minPostChars: 180, maxPostChars: 500 }));
-  assert(!passed.errors.includes('missing_paragraph_break'));
+  const twoParagraphValidation = validatePostText(twoParagraphs, basePack(), baseSettings({ minPostChars: 180, maxPostChars: 500 }));
+  assert(!twoParagraphValidation.errors.includes('missing_paragraph_break'));
 })();
 
 (function referenceCashtagsCannotBeRepeated() {
