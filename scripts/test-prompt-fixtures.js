@@ -363,6 +363,15 @@ function basePack(extra = {}) {
   assert(!exact.errors.some(e => e.startsWith('too_short:')));
 })();
 
+(function richDraftGetsOnlyTenCharacterTolerance() {
+  const text = `成交开始集中到 $RENDER ，但还需要说明资金为什么愿意留下；$FET 和 $BTC 只作一次参照。${'这句话补充的是新的成交证据，不是重复结论。'.repeat(6)}`;
+  const length = [...normalizeCashtags(text, basePack(), baseSettings())].length;
+  const withinTolerance = validatePostText(text, basePack(), baseSettings({ minPostChars: length + 10, maxPostChars: 500 }));
+  assert(!withinTolerance.errors.some(e => e.startsWith('too_short:')));
+  const outsideTolerance = validatePostText(text, basePack(), baseSettings({ minPostChars: length + 11, maxPostChars: 500 }));
+  assert(outsideTolerance.errors.includes(`too_short:${length}`));
+})();
+
 (function tinyPriceLevelsStayHumanReadable() {
   assert.strictEqual(humanPriceLevel(0.00246642), '0.002466');
   assert.strictEqual(humanPriceLevel(1.94321), '1.943');
