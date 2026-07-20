@@ -190,7 +190,7 @@ function selectStyleCard(pack = {}) {
   const options = [
     {
       id: 'desk_decision',
-      instruction: '像给熟悉市场的朋友发盘中语音：第一段直接说现在偏向哪边和理由；第二段给证据；最后用一个价位或数据说明什么情况下会改口。'
+      instruction: '像给熟悉市场的朋友发一条语音：先直接说偏向哪边和理由，再给证据，最后用一个价位或数据说明什么情况下会改口。'
     },
     {
       id: 'headline_vs_tape',
@@ -294,7 +294,7 @@ const TRACKED_CLICHES = [
   '热闹', '拿不回', '点开', '容易', '看点', '慢慢挪', '留得住', '卡在半路', '多看一眼', '值得看',
   '这一截', '同场', '相对差', '撑在那里', '撑在场内', '没被顺手拆', '只是一条证据', '快照本身',
   '小时', '日内振幅', '挂单与价格', '挂单和价格', '后面就看', '注意力', '谁先拿下', '才谈得上',
-  '更像在', '这边短线', '有人愿意', '关键位置', '暂时还没', '真正跟上'
+  '更像在', '这边短线', '有人愿意', '关键位置', '暂时还没', '真正跟上', '盘中', '我的选择是'
 ];
 function recentOverusedPhrases(limit = 40) {
   const rows = listRuns(Math.max(60, limit)).filter(r => r.postText && r.status === 'published').slice(0, limit);
@@ -762,7 +762,7 @@ function validatePostText(text, pack, settings = getSettings()) {
   const firstSentence = clean.split(/[。！？]/)[0] || '';
   const leadSymbol = String(pack.trio?.lead?.symbol || '').toUpperCase();
   if (leadSymbol && !firstSentence.toUpperCase().includes(leadSymbol)) errors.push('lead_missing_from_opening');
-  if (/^\s*\$[A-Z0-9]{1,16}\b/.test(clean) || /^\s*(这轮|这笔|这单|现在|偏空|偏多|我这边只盯|追高|不追|别被|多数人|别只|真正该看的是)/.test(clean)) errors.push('formulaic_opening');
+  if (/^\s*\$[A-Z0-9]{1,16}\b/.test(clean) || /^\s*(这轮|这笔|这单|现在|盘中|偏空|偏多|我这边只盯|追高|不追|别被|多数人|别只|真正该看的是)/.test(clean)) errors.push('formulaic_opening');
   const sim = maxRecentSimilarity(clean, settings);
   if (sim >= Number(settings.similarityThreshold || 0.72)) errors.push(`too_similar:${sim.toFixed(2)}`);
   return { ok: errors.length === 0, errors, text: clean, length: len };
@@ -791,7 +791,7 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 7. 最多写 3 个关键数字；从成交、持仓、费率、盘口、关键位中只选最有用的两类。
 8. 可以使用一个参与条件和一个反证条件，但要像真人说话；不要写开多、开空、进场、止损、失效或“这单我不碰”。
 9. peer 和 anchor 只能各出现一次，必须合在同一个短句里；主角 Cashtag 最多两次。
-10. 不得以 Cashtag、价格、涨跌幅、“这轮/这笔/这单/现在/偏多/偏空/不追/追高/多数人”开头。
+10. 不得以 Cashtag、价格、涨跌幅、“这轮/这笔/这单/现在/盘中/偏多/偏空/不追/追高/多数人”开头。
 11. 不要写“反抽/承接/压住手/容错低/我的处理是/计划偏多/计划偏空/条件计划/只做条件”。
 12. 不要标题、项目符号、Markdown、免责声明或报告腔。
 13. 如果美股/ETF或AI板块参照缺失，正文直接忽略缺失部分。

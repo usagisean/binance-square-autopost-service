@@ -348,6 +348,12 @@ function basePack(extra = {}) {
   assert(validation.errors.includes('formulaic_opening'));
 })();
 
+(function repeatedPanZhongOpeningIsRejected() {
+  const text = '盘中看到 $RENDER 成交开始放大，$FET 和 $BTC 只作参照；主角若能继续放量，当前判断才有延续依据。';
+  const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
+  assert(validation.errors.includes('formulaic_opening'));
+})();
+
 (function lengthValidation() {
   const text = '$RENDER $FET $BTC 太短';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 80, maxPostChars: 120 }));
