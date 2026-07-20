@@ -79,6 +79,13 @@ function shortUsd(value) {
   if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
   return `$${n.toFixed(0)}`;
 }
+function humanPriceLevel(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return String(value || '');
+  const magnitude = Math.floor(Math.log10(Math.abs(n)));
+  const decimals = Math.max(0, Math.min(12, 3 - magnitude));
+  return n.toFixed(decimals).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+}
 function evidenceFocus(pack = {}) {
   const event = pack.marketEvent || {};
   const lead = pack.trio?.lead || {};
@@ -260,13 +267,13 @@ function formatTradePlanForPrompt(tradePlan = null) {
   const symbol = tradePlan.symbol || '';
   const parts = [`${symbol} 当前方向参考：${tradePlan.bias || '观望'}`];
   if (tradePlan.direction === 'long') {
-    if (tradePlan.trigger) parts.push(`站稳 ${tradePlan.trigger} 才能证明强势还在`);
-    if (tradePlan.stopLoss) parts.push(`回到 ${tradePlan.stopLoss} 下方则原判断不成立`);
+    if (tradePlan.trigger) parts.push(`站稳 ${humanPriceLevel(tradePlan.trigger)} 才能证明强势还在`);
+    if (tradePlan.stopLoss) parts.push(`回到 ${humanPriceLevel(tradePlan.stopLoss)} 下方则原判断不成立`);
   } else if (tradePlan.direction === 'short') {
-    if (tradePlan.trigger) parts.push(`跌破 ${tradePlan.trigger} 才能证明弱势延续`);
-    if (tradePlan.stopLoss) parts.push(`重新站上 ${tradePlan.stopLoss} 则原判断不成立`);
+    if (tradePlan.trigger) parts.push(`跌破 ${humanPriceLevel(tradePlan.trigger)} 才能证明弱势延续`);
+    if (tradePlan.stopLoss) parts.push(`重新站上 ${humanPriceLevel(tradePlan.stopLoss)} 则原判断不成立`);
   } else {
-    if (tradePlan.trigger) parts.push(`区间边界参考 ${tradePlan.trigger}`);
+    if (tradePlan.trigger) parts.push(`区间边界参考 ${humanPriceLevel(tradePlan.trigger)}`);
   }
   return `${parts.filter(Boolean).join('；')}。这是盘中决策素材，不是委托单；正文最多使用两个位置，用自然语言说明何时值得参与、何时需要改口，不要写“开多/开空/进场/止损/失效”。`;
 }
@@ -791,7 +798,7 @@ ${(pack.facts || []).join('\n')}
 ${(pack.takeaways || []).join('\n')}
 
 条件计划：
-${pack.tradePlan?.summary || ''}
+${formatTradePlanForPrompt(pack.tradePlan)}
 
 美股/ETF参照：
 ${pack.stockFacts || '暂无可用美股/ETF行情数据。'}
@@ -904,4 +911,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, validatePostText, renderTemplate, cashtag, normalizeCashtags, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext };
+module.exports = { generatePost, validatePostText, renderTemplate, cashtag, normalizeCashtags, humanPriceLevel, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext };

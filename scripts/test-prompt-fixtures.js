@@ -1,7 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { renderTemplate, validatePostText, normalizeCashtags, selectPostAngle, selectEmojiStyle, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
+const { renderTemplate, validatePostText, normalizeCashtags, humanPriceLevel, selectPostAngle, selectEmojiStyle, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
@@ -361,6 +361,17 @@ function basePack(extra = {}) {
   assert(tooShort.errors.some(e => e === `too_short:${length}`));
   const exact = validatePostText(text, basePack(), baseSettings({ minPostChars: length, maxPostChars: 300 }));
   assert(!exact.errors.some(e => e.startsWith('too_short:')));
+})();
+
+(function tinyPriceLevelsStayHumanReadable() {
+  assert.strictEqual(humanPriceLevel(0.00246642), '0.002466');
+  assert.strictEqual(humanPriceLevel(1.94321), '1.943');
+  assert.strictEqual(humanPriceLevel(88.1234), '88.12');
+  const pack = basePack({ tradePlan: { symbol: 'TLM', bias: '偏空', direction: 'short', trigger: 0.00192731, stopLoss: 0.00246642 } });
+  const rendered = renderTemplate('{{TRADE_PLAN}}', pack, baseSettings());
+  assert(rendered.includes('0.001927'));
+  assert(rendered.includes('0.002466'));
+  assert(!rendered.includes('0.00246642'));
 })();
 
 (function paragraphLayoutRemainsEditorialNotAPublishGate() {
