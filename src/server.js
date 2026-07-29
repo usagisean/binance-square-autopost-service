@@ -1,10 +1,11 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { config, masked } = require('./config');
 const { initStore, getSettings, saveSettings, getSecrets, saveSecrets, getLlmConfig, saveLlmConfig, setLlmChannelModels, getIntelConfig, saveIntelConfig, listPrompts, createPrompt, updatePrompt, activatePrompt, getCounter, listRuns } = require('./store');
 const { schedulerStatus, startScheduler } = require('./scheduler');
-const { runOnce } = require('./workflow');
+const { runOnce, activeRunStatus, isRunInProgress } = require('./workflow');
 const { buildMarketPack } = require('./marketPack');
 const { publisherStatus } = require('./publisher');
 const { getJson } = require('./httpClient');
@@ -14,9 +15,79 @@ const { listImageAssets, saveImageAsset, deleteImageAsset, assetPath, contentTyp
 
 initStore();
 
+const runJobs = new Map();
+let activeRunJobId = null;
+const RUN_JOB_TTL_MS = 2 * 60 * 60 * 1000;
+
+function publicRunJob(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    mode: job.mode,
+    status: job.status,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt || null,
+    error: job.error || null,
+    run: job.run || null
+  };
+}
+
+function pruneRunJobs() {
+  const cutoff = Date.now() - RUN_JOB_TTL_MS;
+  for (const [id, job] of runJobs) {
+    const timestamp = Date.parse(job.completedAt || job.createdAt || 0);
+    if (job.status !== 'running' && timestamp < cutoff) runJobs.delete(id);
+  }
+}
+
+function startRunJob(mode) {
+  pruneRunJobs();
+  const activeJob = activeRunJobId ? runJobs.get(activeRunJobId) : null;
+  if (activeJob?.status === 'running' || isRunInProgress()) {
+    const err = new Error('run_in_progress');
+    err.code = 'RUN_IN_PROGRESS';
+    err.activeJob = publicRunJob(activeJob) || activeRunStatus();
+    throw err;
+  }
+
+  const createdAt = new Date().toISOString();
+  const job = {
+    id: `job_${crypto.randomUUID()}`,
+    mode,
+    status: 'running',
+    createdAt,
+    startedAt: createdAt,
+    completedAt: null,
+    error: null,
+    run: null
+  };
+  runJobs.set(job.id, job);
+  activeRunJobId = job.id;
+
+  Promise.resolve()
+    .then(() => runOnce(mode, { trigger: 'web' }))
+    .then(run => {
+      job.run = run;
+      job.status = 'completed';
+      job.completedAt = new Date().toISOString();
+    })
+    .catch(err => {
+      job.status = 'error';
+      job.error = err.message || String(err);
+      job.completedAt = new Date().toISOString();
+      console.error('[run-job]', job.id, err);
+    })
+    .finally(() => {
+      if (activeRunJobId === job.id) activeRunJobId = null;
+    });
+
+  return job;
+}
+
 function send(res, status, payload, headers = {}) {
   const body = typeof payload === 'string' || Buffer.isBuffer(payload) ? payload : JSON.stringify(payload, null, 2);
-  res.writeHead(status, { 'Content-Type': typeof payload === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8', ...headers });
+  res.writeHead(status, { 'Content-Type': typeof payload === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
   res.end(body);
 }
 function sendJson(res, status, payload) { send(res, status, payload, { 'Content-Type': 'application/json; charset=utf-8' }); }
@@ -150,6 +221,7 @@ async function handleApi(req, res, url) {
       settings: getSettings(),
       counter: getCounter(getSettings()),
       scheduler: schedulerStatus(),
+      activeRun: activeRunStatus(),
       publisher: publisherStatus(),
       llm: {
         provider: getSettings().llmProvider || config.llmProvider,
@@ -310,9 +382,27 @@ async function handleApi(req, res, url) {
   const promptActivate = url.pathname.match(/^\/api\/prompts\/([^/]+)\/activate$/);
   if (promptActivate && req.method === 'POST') return sendJson(res, 200, { ok: true, prompt: activatePrompt(promptActivate[1]) });
   if (req.method === 'GET' && url.pathname === '/api/runs') return sendJson(res, 200, { ok: true, runs: listRuns(Number(url.searchParams.get('limit') || 50)) });
+  const runJobMatch = url.pathname.match(/^\/api\/run-jobs\/([^/]+)$/);
+  if (runJobMatch && req.method === 'GET') {
+    pruneRunJobs();
+    const job = runJobs.get(decodeURIComponent(runJobMatch[1]));
+    if (!job) return sendJson(res, 404, { ok: false, error: 'run_job_not_found' });
+    return sendJson(res, 200, { ok: true, job: publicRunJob(job) });
+  }
   if (req.method === 'POST' && url.pathname === '/api/run') {
     const body = await readBody(req);
     const mode = body.mode === 'publish' ? 'publish' : 'dry-run';
+    if (body.async === true) {
+      try {
+        const job = startRunJob(mode);
+        return sendJson(res, 202, { ok: true, accepted: true, job: publicRunJob(job) });
+      } catch (err) {
+        if (err.code === 'RUN_IN_PROGRESS') {
+          return sendJson(res, 409, { ok: false, error: 'run_in_progress', activeRun: err.activeJob || activeRunStatus() });
+        }
+        throw err;
+      }
+    }
     return sendJson(res, 200, { ok: true, run: await runOnce(mode, { trigger: 'web' }) });
   }
   if (req.method === 'POST' && url.pathname === '/api/market-pack') return sendJson(res, 200, { ok: true, pack: await buildMarketPack() });
@@ -326,7 +416,7 @@ function serveStatic(req, res, url) {
   if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return notFound(res);
   const ext = path.extname(full).toLowerCase();
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
-  res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
+  res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=300' });
   fs.createReadStream(full).pipe(res);
 }
 
