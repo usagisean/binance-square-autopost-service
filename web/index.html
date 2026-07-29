@@ -187,8 +187,8 @@
       <div class="grid3"><div><label><input id="enableQualityGate" type="checkbox" disabled> 有效行情每轮都发（品质分不再跳过正文）</label></div><div><label>内容价值参考分（不阻断）</label><input id="minPublishScore" type="number" min="0" max="100" value="42"></div><div><label>最低证据图分</label><input id="minImageEvidenceScore" type="number" min="0" max="100" value="42"></div></div>
       <label>禁用词 / 禁止表达（每行一个）</label><textarea id="bannedPhrases" class="small-textarea" placeholder="拧巴&#10;模板腔&#10;起飞"></textarea>
       <h3>交易计划与标签</h3>
-      <label><input type="checkbox" id="includeTradePlan">生成盘中位置参考（正文不写成交易计划）</label>
-      <label>交易计划模式</label><select id="tradePlanMode"><option value="opinion">opinion：人话观点，只轻带一个位置</option><option value="conditional">conditional：条件式，不强喊单</option><option value="levels">levels：更偏价位计划</option><option value="off">off：不写位置参考</option></select>
+      <label><input type="checkbox" id="includeTradePlan">生成基于真实行情的方向、止损与止盈参考</label>
+      <label>交易计划模式</label><select id="tradePlanMode"><option value="trade_card">trade_card：首行做多/做空 + 止损止盈（推荐）</option><option value="opinion">opinion：人话观点，只轻带一个位置</option><option value="conditional">conditional：条件式，不强喊单</option><option value="levels">levels：更偏价位计划</option><option value="off">off：不写位置参考</option></select>
       <label><input type="checkbox" id="enableImagePosts">启用图片发帖（最多 4 张；默认关闭，关闭时仍纯文本发布）</label>
       <label><input type="checkbox" id="autoGenerateImage">自动生成行情配图（LIVE 会按日内剩余额度随机分布；达到上限后自动改回纯文本）</label>
       <div class="grid3"><div><label>每日自动生成图上限（建议 20）</label><input id="autoImageMaxDaily" type="number" min="0" max="100" value="20"></div><div><label>配图策略</label><select id="imagePostMode"><option value="off">不配图</option><option value="static">固定图片路径</option><option value="random">从素材库随机配图</option><option value="rotate">从素材库轮流配图</option></select></div><div><label>每帖图片数</label><input id="imagePathCount" type="number" min="1" max="4" value="1"></div></div>

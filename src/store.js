@@ -46,7 +46,7 @@ const defaultSettings = {
   minImageEvidenceScore: 42,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
-  tradePlanMode: 'opinion',
+  tradePlanMode: 'trade_card',
   enableImagePosts: String(process.env.ENABLE_IMAGE_POSTS || '').toLowerCase() === 'true',
   autoGenerateImage: String(process.env.AUTO_GENERATE_IMAGE || '').toLowerCase() === 'true',
   autoImageMaxDaily: Math.max(0, Number(process.env.AUTO_IMAGE_MAX_DAILY || 20)),
@@ -138,7 +138,7 @@ function saveSettings(patch) {
   next.minPublishScore = Math.max(0, Math.min(100, Number(next.minPublishScore ?? defaultSettings.minPublishScore)));
   next.minImageEvidenceScore = Math.max(0, Math.min(100, Number(next.minImageEvidenceScore ?? defaultSettings.minImageEvidenceScore)));
   next.includeTradePlan = next.includeTradePlan !== false;
-  next.tradePlanMode = ['opinion', 'soft_opinion', 'conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
+  next.tradePlanMode = ['trade_card', 'directional', 'opinion', 'soft_opinion', 'conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
   next.enableImagePosts = next.enableImagePosts === true;
   next.autoGenerateImage = next.autoGenerateImage === true;
   next.autoImageMaxDaily = Math.max(0, Number(next.autoImageMaxDaily ?? defaultSettings.autoImageMaxDaily));

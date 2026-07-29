@@ -514,10 +514,19 @@ function buildTradePlan(pack, intel, klines, isFutures, settings = {}) {
   const current = Number(leadIntel.markPrice || lead.price || 0);
   if (!Number.isFinite(current) || current <= 0) return null;
   const recent = (klines || []).slice(-32);
+  // The full eight-hour window is useful as context, but it often produced
+  // stops so far away that the resulting post was not actionable. Use the
+  // latest three hours for the actual trade card and retain the wider range in
+  // basis for audit/debugging.
+  const tactical = recent.slice(-12);
   const highs = recent.map(k => k.high).filter(Number.isFinite);
   const lows = recent.map(k => k.low).filter(Number.isFinite);
   const recentHigh = highs.length ? Math.max(...highs) : Number(lead.high24h || current);
   const recentLow = lows.length ? Math.min(...lows) : Number(lead.low24h || current);
+  const tacticalHighs = tactical.map(k => k.high).filter(Number.isFinite);
+  const tacticalLows = tactical.map(k => k.low).filter(Number.isFinite);
+  const tacticalHigh = tacticalHighs.length ? Math.max(...tacticalHighs) : recentHigh;
+  const tacticalLow = tacticalLows.length ? Math.min(...tacticalLows) : recentLow;
   const avgRange = averageRangePct(recent) || Math.max(0.4, Math.min(6, Number(lead.amplitude24h || 0) / 8));
   const depthImbalance = Number(leadIntel.depth?.imbalance || 0);
   const taker = Number(leadIntel.takerBuySellRatio || 0);
@@ -537,24 +546,36 @@ function buildTradePlan(pack, intel, klines, isFutures, settings = {}) {
   const bias = direction === 'long' ? '看涨' : direction === 'short' ? '看跌' : '观望';
   const bufferPct = Math.max(0.12, Math.min(1.2, avgRange * 0.18));
   const pullbackPct = Math.max(0.18, Math.min(2.8, avgRange * 0.42));
-  const stopPct = Math.max(0.45, Math.min(4.8, avgRange * 0.9));
-  let entry, trigger, stopLoss, invalidation, summary;
+  const stopPct = Math.max(0.55, Math.min(4.2, avgRange * 0.85));
+  let entry, trigger, stopLoss, takeProfit1, takeProfit2, invalidation, summary;
   if (direction === 'long') {
-    trigger = roundLevel(Math.max(recentHigh, current) * (1 + bufferPct / 100), current);
-    const low = roundLevel(Math.max(recentLow, current * (1 - pullbackPct / 100)), current);
+    trigger = roundLevel(Math.max(tacticalHigh, current) * (1 + bufferPct / 100), current);
+    const low = roundLevel(Math.max(tacticalLow, current * (1 - pullbackPct / 100)), current);
     const high = roundLevel(current * (1 - Math.max(0.1, bufferPct) / 100), current);
     entry = high > low ? `${price(low)}-${price(high)}` : `突破 ${price(trigger)}`;
-    stopLoss = roundLevel(Math.min(recentLow * (1 - bufferPct / 100), current * (1 - stopPct / 100)), current);
+    const structuralStop = tacticalLow * (1 - bufferPct / 100);
+    const riskBudgetStop = trigger * (1 - stopPct / 100);
+    stopLoss = roundLevel(Math.max(structuralStop, riskBudgetStop), current);
+    if (stopLoss >= trigger) stopLoss = roundLevel(trigger * (1 - stopPct / 100), current);
+    const risk = Math.max(trigger - stopLoss, trigger * 0.002);
+    takeProfit1 = roundLevel(trigger + risk * 1.2, current);
+    takeProfit2 = roundLevel(trigger + risk * 2, current);
     invalidation = price(stopLoss);
-    summary = `${lead.symbol} 条件计划：偏多；突破 ${price(trigger)} 或回踩 ${entry} 有承接才考虑，失效/止损看 ${price(stopLoss)}。`;
+    summary = `${lead.symbol} 方向做多；站稳 ${price(trigger)} 后生效，止损 ${price(stopLoss)}，止盈先看 ${price(takeProfit1)}、再看 ${price(takeProfit2)}。`;
   } else if (direction === 'short') {
-    trigger = roundLevel(Math.min(recentLow, current) * (1 - bufferPct / 100), current);
+    trigger = roundLevel(Math.min(tacticalLow, current) * (1 - bufferPct / 100), current);
     const low = roundLevel(current * (1 + Math.max(0.1, bufferPct) / 100), current);
-    const high = roundLevel(Math.min(recentHigh, current * (1 + pullbackPct / 100)), current);
+    const high = roundLevel(Math.min(tacticalHigh, current * (1 + pullbackPct / 100)), current);
     entry = high > low ? `${price(low)}-${price(high)}` : `跌破 ${price(trigger)}`;
-    stopLoss = roundLevel(Math.max(recentHigh * (1 + bufferPct / 100), current * (1 + stopPct / 100)), current);
+    const structuralStop = tacticalHigh * (1 + bufferPct / 100);
+    const riskBudgetStop = trigger * (1 + stopPct / 100);
+    stopLoss = roundLevel(Math.min(structuralStop, riskBudgetStop), current);
+    if (stopLoss <= trigger) stopLoss = roundLevel(trigger * (1 + stopPct / 100), current);
+    const risk = Math.max(stopLoss - trigger, trigger * 0.002);
+    takeProfit1 = roundLevel(Math.max(trigger - risk * 1.2, trigger * 0.05), current);
+    takeProfit2 = roundLevel(Math.max(trigger - risk * 2, trigger * 0.02), current);
     invalidation = price(stopLoss);
-    summary = `${lead.symbol} 条件计划：偏空；跌破 ${price(trigger)} 或反抽 ${entry} 转弱才考虑，失效/止损看 ${price(stopLoss)}。`;
+    summary = `${lead.symbol} 方向做空；跌破 ${price(trigger)} 后生效，止损 ${price(stopLoss)}，止盈先看 ${price(takeProfit1)}、再看 ${price(takeProfit2)}。`;
   } else {
     const upper = roundLevel(Math.max(recentHigh, current) * (1 + bufferPct / 100), current);
     const lower = roundLevel(Math.min(recentLow, current) * (1 - bufferPct / 100), current);
@@ -574,12 +595,17 @@ function buildTradePlan(pack, intel, klines, isFutures, settings = {}) {
     trigger,
     entry,
     stopLoss: stopLoss == null ? null : roundLevel(stopLoss, current),
+    takeProfit1: takeProfit1 == null ? null : roundLevel(takeProfit1, current),
+    takeProfit2: takeProfit2 == null ? null : roundLevel(takeProfit2, current),
+    targetMethod: takeProfit1 == null ? null : 'risk_multiple_1.2R_2R',
     invalidation,
     basis: {
       score: Number(score.toFixed(2)),
       avgRangePct: Number(avgRange.toFixed(2)),
       recentHigh: roundLevel(recentHigh, current),
       recentLow: roundLevel(recentLow, current),
+      tacticalHigh: roundLevel(tacticalHigh, current),
+      tacticalLow: roundLevel(tacticalLow, current),
       depthImbalance: Number(depthImbalance.toFixed(2)),
       fundingRate: Number.isFinite(funding) ? funding : null,
       openInterestValueChange5m: Number.isFinite(oiChange) ? Number(oiChange.toFixed(2)) : null,
@@ -862,4 +888,4 @@ async function finalizePack(pack) {
   attachTradfi(structured, await fetchTradfiReferences());
   return attachMarketQuality(structured);
 }
-module.exports = { buildMarketPack, fmt, usd, price, rankScore, discoverDynamicRows };
+module.exports = { buildMarketPack, buildTradePlan, fmt, usd, price, rankScore, discoverDynamicRows };

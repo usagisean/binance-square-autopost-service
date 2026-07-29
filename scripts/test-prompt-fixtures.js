@@ -1,7 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { renderTemplate, validatePostText, normalizeCashtags, humanPriceLevel, selectPostAngle, selectEmojiStyle, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
+const { renderTemplate, validatePostText, normalizeCashtags, humanPriceLevel, selectPostAngle, selectEmojiStyle, selectHumorStyle, formatTradePlanForPrompt, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
@@ -9,7 +9,7 @@ const { buildSvg, chooseEvidenceType } = require('../src/imageCard');
 const { deriveMarketEvent, attachMarketQuality } = require('../src/marketQuality');
 const { normalizeHyperliquid } = require('../src/publicDerivatives');
 const { parseChart } = require('../src/tradfi');
-const { rankScore, discoverDynamicRows } = require('../src/marketPack');
+const { buildTradePlan, rankScore, discoverDynamicRows } = require('../src/marketPack');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -51,6 +51,10 @@ function basePack(extra = {}) {
       symbol: 'RENDER',
       bias: '看涨',
       direction: 'long',
+      trigger: 7.25,
+      stopLoss: 6.9,
+      takeProfit1: 7.67,
+      takeProfit2: 8.16,
       summary: 'RENDER 偏多条件：站上 $7.25 再看延续；跌回 $6.90 附近就放弃。'
     },
     externalIntel: {},
@@ -105,6 +109,75 @@ function basePack(extra = {}) {
   assert(editorialBrief(pack).includes('全文最多 1 个'));
   const rendered = renderTemplate(template, pack, baseSettings());
   assert(rendered.includes('表情：'));
+})();
+
+(function humorStyleIsOptionalAndBounded() {
+  const style = selectHumorStyle(basePack());
+  assert(['none', 'dry_discipline', 'data_deadpan', 'desk_banter'].includes(style.id));
+  assert(style.instruction);
+  const rendered = renderTemplate('{{HUMOR_STYLE}}', basePack(), baseSettings());
+  assert(rendered.includes(style.instruction));
+})();
+
+(function directionalTradePlanBuildsAuditableTargets() {
+  const rows = Array.from({ length: 20 }, (_, i) => ({
+    high: 100 + i * 0.12,
+    low: 98.5 + i * 0.08,
+    close: 99.4 + i * 0.1
+  }));
+  const longPack = {
+    trio: {
+      lead: { symbol: 'TEST', price: 101.2, change1h: 4.2, change24h: 12, amplitude24h: 10 },
+      peer: { symbol: 'PEER', change1h: 0.5 },
+      anchor: { symbol: 'BTC', change1h: 0.1 }
+    }
+  };
+  const longPlan = buildTradePlan(longPack, {
+    symbols: { TEST: { depth: { imbalance: 25 }, takerBuySellRatio: 1.2, openInterestValueChange5m: 0.8, fundingRate: 0.0001 } }
+  }, rows, true, { tradePlanMode: 'trade_card' });
+  assert.strictEqual(longPlan.direction, 'long');
+  assert(longPlan.stopLoss < longPlan.trigger);
+  assert(longPlan.takeProfit1 > longPlan.trigger);
+  assert(longPlan.takeProfit2 > longPlan.takeProfit1);
+  assert.strictEqual(longPlan.targetMethod, 'risk_multiple_1.2R_2R');
+
+  const shortPack = {
+    trio: {
+      lead: { symbol: 'TEST', price: 99.2, change1h: -4.2, change24h: -12, amplitude24h: 10 },
+      peer: { symbol: 'PEER', change1h: 0.2 },
+      anchor: { symbol: 'BTC', change1h: 0.1 }
+    }
+  };
+  const shortPlan = buildTradePlan(shortPack, {
+    symbols: { TEST: { depth: { imbalance: -25 }, takerBuySellRatio: 0.8, openInterestValueChange5m: -0.8, fundingRate: 0.0001 } }
+  }, rows, true, { tradePlanMode: 'trade_card' });
+  assert.strictEqual(shortPlan.direction, 'short');
+  assert(shortPlan.stopLoss > shortPlan.trigger);
+  assert(shortPlan.takeProfit1 < shortPlan.trigger);
+  assert(shortPlan.takeProfit2 < shortPlan.takeProfit1);
+})();
+
+(function tradeCardPromptAndValidationAreActionable() {
+  const pack = basePack();
+  const settings = baseSettings({ tradePlanMode: 'trade_card', minPostChars: 1, maxPostChars: 300 });
+  const planText = formatTradePlanForPrompt(pack.tradePlan);
+  assert(planText.includes('做多 $RENDER '));
+  assert(planText.includes('止损 6.9'));
+  assert(planText.includes('止盈先看 7.67，再看 8.16'));
+
+  const text = '做多 $RENDER ：站稳7.25再参与，止损6.9，止盈先看7.67、再看8.16。成交放大后，最近一小时的强弱差也在扩大；$FET 和 $BTC 同期没有跟上。涨幅会讲故事，成交至少得签字，这里两者暂时同向。';
+  const valid = validatePostText(text, pack, settings);
+  assert.deepStrictEqual(valid.errors, []);
+
+  const missingRiskPlan = validatePostText(text.replace('，止损6.9，止盈先看7.67、再看8.16', ''), pack, settings);
+  assert(missingRiskPlan.errors.includes('missing_stop_loss_in_opening'));
+  assert(missingRiskPlan.errors.includes('missing_take_profit_in_opening'));
+
+  const wrongDirection = validatePostText(text.replace('做多', '做空'), pack, settings);
+  assert(wrongDirection.errors.includes('trade_direction_mismatch:long'));
+
+  const fourthTag = validatePostText(`${text} $NVDA 只作额外参照。`, pack, settings);
+  assert(fourthTag.errors.includes('too_many_distinct_cashtags:4'));
 })();
 
 (function marketPackJsonSerializable() {
