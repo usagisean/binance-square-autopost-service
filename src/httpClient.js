@@ -155,7 +155,7 @@ function request(method, url, { headers = {}, body = null, timeoutMs = 20000, pr
 async function getJson(url, options = {}) {
   const res = await request('GET', url, {
     headers: {
-      'User-Agent': 'binance-square-autopost-service/0.1',
+      'User-Agent': 'binance-square-autopost-service/0.2',
       Accept: 'application/json',
       ...(options.headers || {})
     },
@@ -170,7 +170,7 @@ async function postJson(url, payload, options = {}) {
   const body = JSON.stringify(payload);
   const res = await request('POST', url, {
     headers: {
-      'User-Agent': 'binance-square-autopost-service/0.1',
+      'User-Agent': 'binance-square-autopost-service/0.2',
       Accept: 'application/json',
       'Content-Type': 'application/json',
       ...(options.headers || {})

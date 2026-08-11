@@ -398,7 +398,7 @@ async function safeJson(url, options = {}) {
 async function safeText(url, options = {}) {
   try {
     const res = await request('GET', url, {
-      headers: { 'User-Agent': 'binance-square-autopost-service/0.1', Accept: 'application/rss+xml, application/atom+xml, text/xml, */*' },
+      headers: { 'User-Agent': 'binance-square-autopost-service/0.2', Accept: 'application/rss+xml, application/atom+xml, text/xml, */*' },
       timeoutMs: options.timeoutMs || 7000,
       proxy: options.proxy
     });

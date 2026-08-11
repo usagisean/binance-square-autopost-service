@@ -6,7 +6,7 @@ ENV NODE_ENV=production \
     PORT=8787
 
 COPY package.json package-lock.json* ./
-RUN apk add --no-cache fontconfig font-dejavu font-noto-cjk
+RUN apk add --no-cache fontconfig font-dejavu font-noto-cjk ffmpeg
 RUN npm ci --omit=dev
 COPY src ./src
 COPY web ./web

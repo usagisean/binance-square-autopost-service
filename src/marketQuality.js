@@ -15,7 +15,7 @@ function evidenceAvailable(pack = {}) {
     orderbook: cg.orderbookAskBids?.available === true,
     depth: pack.marketIntel?.symbols?.[pack.trio?.lead?.symbol]?.depth?.available === true,
     chart: Array.isArray(pack.chart?.klines) && pack.chart.klines.length >= 20,
-    news: Array.isArray(pack.externalIntel?.news) && pack.externalIntel.news.length > 0,
+    news: Array.isArray(pack.externalIntel?.newsItems) && pack.externalIntel.newsItems.length > 0,
     publicDerivatives: pack.publicDerivatives?.ok === true && Boolean(pack.publicDerivatives?.symbols?.[pack.trio?.lead?.symbol]),
     tradfi: pack.tradfi?.ok === true
   };

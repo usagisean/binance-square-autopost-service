@@ -4,6 +4,9 @@ const crypto = require('crypto');
 const { DATA_DIR, ROOT, config } = require('./config');
 const { DEFAULT_SQUARE_TAG_SYMBOLS, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 
+const BUILTIN_PROMPT_VERSION = 3;
+const EDITORIAL_STRATEGY_VERSION = 3;
+
 const paths = {
   settings: path.join(DATA_DIR, 'settings.json'),
   prompts: path.join(DATA_DIR, 'prompts.json'),
@@ -39,6 +42,11 @@ const defaultSettings = {
   leadCooldownMinutes: 300,
   maxConsecutiveFailures: 3,
   similarityThreshold: 0.72,
+  editorialStrategyVersion: EDITORIAL_STRATEGY_VERSION,
+  // Explicit “做多/做空 + 风险位” posts should be rare. Most posts sell the
+  // opportunity through evidence and relative payoff, not a repetitive card.
+  maxActionablePostsDaily: 3,
+  explicitSignalCooldownRuns: 8,
   // Legacy field retained for settings-file compatibility. Quality scoring no
   // longer blocks a valid scheduled post; it only informs copy and images.
   enableQualityGate: false,
@@ -46,7 +54,7 @@ const defaultSettings = {
   minImageEvidenceScore: 42,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
-  tradePlanMode: 'trade_card',
+  tradePlanMode: 'adaptive',
   enableImagePosts: String(process.env.ENABLE_IMAGE_POSTS || '').toLowerCase() === 'true',
   autoGenerateImage: String(process.env.AUTO_GENERATE_IMAGE || '').toLowerCase() === 'true',
   autoImageMaxDaily: Math.max(0, Number(process.env.AUTO_IMAGE_MAX_DAILY || 20)),
@@ -95,10 +103,47 @@ function writeJson(file, value) {
 }
 
 function initStore() {
-  if (!fs.existsSync(paths.settings)) writeJson(paths.settings, defaultSettings);
+  if (!fs.existsSync(paths.settings)) {
+    writeJson(paths.settings, defaultSettings);
+  } else {
+    const stored = readJson(paths.settings, {});
+    if (Number(stored.editorialStrategyVersion || 0) < EDITORIAL_STRATEGY_VERSION) {
+      // The previous default forced a complete signal card into every post.
+      // Migrate that default once, while keeping explicitly configured modern
+      // modes untouched on future upgrades.
+      if (['trade_card', 'directional', '', undefined].includes(stored.tradePlanMode)) stored.tradePlanMode = 'adaptive';
+      stored.editorialStrategyVersion = EDITORIAL_STRATEGY_VERSION;
+      const previousExplicitCap = Number(stored.maxActionablePostsDaily ?? defaultSettings.maxActionablePostsDaily);
+      stored.maxActionablePostsDaily = Math.max(0, Math.min(3, Number.isFinite(previousExplicitCap) ? previousExplicitCap : defaultSettings.maxActionablePostsDaily));
+      stored.explicitSignalCooldownRuns = Math.max(0, Math.min(50, Number(stored.explicitSignalCooldownRuns ?? defaultSettings.explicitSignalCooldownRuns)));
+      stored.updatedAt = nowIso();
+      writeJson(paths.settings, stored);
+    }
+  }
   if (!fs.existsSync(paths.prompts)) {
-    const p = { id: id('prompt_'), name: '默认短帖 Prompt', content: defaultPrompt, active: true, createdAt: nowIso(), updatedAt: nowIso() };
+    const p = { id: id('prompt_'), name: '默认短帖 Prompt', content: defaultPrompt, active: true, builtinVersion: BUILTIN_PROMPT_VERSION, createdAt: nowIso(), updatedAt: nowIso() };
     writeJson(paths.prompts, [p]);
+  } else {
+    const prompts = readJson(paths.prompts, []);
+    if (Array.isArray(prompts) && !prompts.some(p => Number(p.builtinVersion || 0) >= BUILTIN_PROMPT_VERSION)) {
+      const current = prompts.find(p => p.active);
+      const replaceBuiltin = current && String(current.name || '').startsWith('默认短帖 Prompt');
+      if (replaceBuiltin) {
+        current.active = false;
+        current.name = `${current.name}（旧版备份）`;
+        current.updatedAt = nowIso();
+      }
+      prompts.unshift({
+        id: id('prompt_'),
+        name: '默认短帖 Prompt',
+        content: defaultPrompt,
+        active: replaceBuiltin || !current,
+        builtinVersion: BUILTIN_PROMPT_VERSION,
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      });
+      writeJson(paths.prompts, prompts);
+    }
   }
   if (!fs.existsSync(paths.runs)) fs.writeFileSync(paths.runs, '');
 }
@@ -134,11 +179,16 @@ function saveSettings(patch) {
   next.leadCooldownMinutes = Math.max(0, Number(next.leadCooldownMinutes ?? defaultSettings.leadCooldownMinutes));
   next.maxConsecutiveFailures = Math.max(0, Number(next.maxConsecutiveFailures ?? defaultSettings.maxConsecutiveFailures));
   next.similarityThreshold = Math.max(0, Math.min(1, Number(next.similarityThreshold ?? defaultSettings.similarityThreshold)));
+  next.editorialStrategyVersion = EDITORIAL_STRATEGY_VERSION;
+  const explicitCap = Number(next.maxActionablePostsDaily ?? defaultSettings.maxActionablePostsDaily);
+  const explicitCooldown = Number(next.explicitSignalCooldownRuns ?? defaultSettings.explicitSignalCooldownRuns);
+  next.maxActionablePostsDaily = Math.max(0, Math.min(20, Number.isFinite(explicitCap) ? explicitCap : defaultSettings.maxActionablePostsDaily));
+  next.explicitSignalCooldownRuns = Math.max(0, Math.min(50, Number.isFinite(explicitCooldown) ? explicitCooldown : defaultSettings.explicitSignalCooldownRuns));
   next.enableQualityGate = false;
   next.minPublishScore = Math.max(0, Math.min(100, Number(next.minPublishScore ?? defaultSettings.minPublishScore)));
   next.minImageEvidenceScore = Math.max(0, Math.min(100, Number(next.minImageEvidenceScore ?? defaultSettings.minImageEvidenceScore)));
   next.includeTradePlan = next.includeTradePlan !== false;
-  next.tradePlanMode = ['trade_card', 'directional', 'opinion', 'soft_opinion', 'conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
+  next.tradePlanMode = ['adaptive', 'trade_card', 'directional', 'opinion', 'soft_opinion', 'conditional', 'levels', 'off'].includes(String(next.tradePlanMode || '').toLowerCase()) ? String(next.tradePlanMode).toLowerCase() : defaultSettings.tradePlanMode;
   next.enableImagePosts = next.enableImagePosts === true;
   next.autoGenerateImage = next.autoGenerateImage === true;
   next.autoImageMaxDaily = Math.max(0, Number(next.autoImageMaxDaily ?? defaultSettings.autoImageMaxDaily));

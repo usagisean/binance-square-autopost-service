@@ -10,15 +10,16 @@
 - Web 后台配置 OpenAI-compatible 渠道、API Key、拉取 `/models`、测试模型、设置最多 10 个 fallback 优先级
 - Web 后台配置情报源：新闻 RSS、KOL 手动源、宏观/地缘/名人效应备注、Coinglass Key、链上 API Keys
 - 自动发布安全阀：Lead 币种冷却、禁用词校验、近帖相似度校验、连续失败自动暂停
-- 条件式交易计划：基于真实行情/盘口/15m K 线生成方向、触发点、失效/止损位，Prompt 只能引用数据包内的计划
-- 概览页展示发帖热力图、今日额度、LLM / Publisher 状态；热力图按每日上限（默认 100）和当天 24 小时分布显示
+- 资深交易员编辑策略：先识别唯一市场事件，再回答“为什么主角比参照币更值得打开交易页”，避免每帖复制“做多/做空 + 两档止盈”
+- 明确方向帖限流：默认每天最多 3 条，且相邻两条至少间隔 8 次已发布内容；其余帖子用信息差、相对强弱和一个赔率开关形成交易兴趣
+- 概览页展示发帖热力图、今日额度、LLM / Publisher 状态；热力图按项目每日上限（默认 50）和当天 24 小时分布显示
 - 默认 preview-only：定时任务只生成内容给你看，不真实发帖
 - 通用 Job 配置：Job 名称、说明、语言、风格、Prompt 模板、模型中转站都可配置
 - 定时发布，默认每 20 分钟检查一次
 - 每日发帖计数与上限
 - Binance futures 数据优先；遇到 451 或不可用时 fallback 到 `www.binance.com/api/v3` 现货数据
 - OpenAI-compatible `chat/completions`、`/completions`、`responses` 三种模式；也支持 `LLM_PROVIDER=mock` 本地测试
-- Binance Square OpenAPI 发布
+- Binance 官方 Square Post Skill v2.0.0 发布能力：短帖、最多 4 图、长文/封面和视频/自动封面；定时任务默认仍使用稳定的短帖/图文模式
 - Telegram 成功/失败通知（可选）
 - Web 后台配置 Telegram Bot Token / Chat ID 并发送测试消息
 - 所有状态存在 `data/`，不依赖数据库
@@ -118,16 +119,24 @@ API Key / Binance Key 都可以在后台填。模型渠道 Key 保存到 `data/l
 
 ### 内容长度、标签和交易计划建议
 
-如果要让手机首屏直接显示方向、触发、止损和两档止盈，建议在“任务设置”里设置：
+建议在“任务设置”里设置：
 
 ```text
 最短字符：160
 最长字符：260
 交易计划：开启
-交易计划模式：trade_card
+交易计划模式：adaptive
+每日最多明确做多/做空帖：3
 ```
 
-`trade_card` 的止盈按触发价到止损价的风险距离计算为 1.2R / 2R，不代表价格必然到达。证据冲突时会输出观望，而不是硬编多空方案。
+`adaptive` 不会把 50 条日更都伪装成同等质量的交易信号：
+
+- **少量明确方向帖**：只有 A 级且评分、方向、结构都足够强，并通过每日上限与间隔限制，才写做多/做空、触发、防守和第一目标。
+- **普通 A 级**：证据强，但不写完整信号卡；直接回答主角为什么更有可交易性，并保留一个赔率开关。
+- **B 级**：有明确倾向但证据不完整；只保留一个真正改变判断的位置。
+- **C 级**：没有可验证优势；解释最容易误读的地方和缺失证据，不编造止损止盈。
+
+执行目标仍按结构风险计算，不代表价格必然到达。`trade_card` 作为兼容选项保留，但同样受每日明确方向帖上限与发帖间隔限制。
 
 Binance Square 底部币种卡片由平台识别 `$BTC` 这类 Cashtag 后自动生成。Cashtag 后必须有半角空格，并且正文最多保留 lead / peer / anchor 三个不同标签；多于三个可能被发布接口拒绝。不是所有币都会稳定出卡片；服务里提供“Square 标签优先币种”，会优先选择更常见、更容易被识别的币做 lead/peer，但仍以真实波动和成交活跃度为核心。
 
@@ -216,6 +225,21 @@ PUBLISH_MODE=preview
 curl -H "Authorization: Bearer $ADMIN_TOKEN" http://127.0.0.1:8787/api/status
 ```
 
+### Binance Square 最新发布协议
+
+发布层按 Binance 官方 `square-post` v2.0.0 对齐：
+
+- `contentType=1`：纯文字或 1–4 张图片，字段为 `bodyTextOnly` / `imageList`；
+- `contentType=2`：长文，字段为 `title` / `bodyTextOnly`，封面 `cover` 可选；
+- `contentType=3`：视频，使用 `fileTicket` / `cover` / `videoTimeSeconds` / `isPublish`；
+- 图片和视频先走 v2 媒体接口，发布仍走 v1 `/content/add`；
+- `/content/add` 返回 HTTP 504 时按官方规则记录为“已提交但无帖子 ID”，**不会自动重试**，避免重复发帖；
+- 官方限额为每天 100 条帖子、400 次媒体上传。项目自己的 `maxDailyPosts` 仍可设置得更低。
+
+当前定时工作流继续使用 `contentType=1`，因此升级不会把生产任务突然改成长文或视频。长文与视频能力已经在发布层就绪，后续可单独接后台入口。仍复用原来的 `BINANCE_SQUARE_OPENAPI_KEY`，不需要新增 Key。
+
+官方实现参考：[Binance Square Post Skill](https://www.binance.com/en-IN/skills/detail/binance/square-post) / [binance-skills-hub 源码](https://github.com/binance/binance-skills-hub/tree/main/skills/binance/square-post)。这里的 `v2.0.0` 是官方 Skill 版本；发布请求本身仍按官方实现走 v1 `/content/add`，媒体上传走 v2。
+
 ## 数据文件
 
 - `data/settings.json`：后台设置，首次启动自动生成，已忽略 Git
@@ -226,6 +250,8 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" http://127.0.0.1:8787/api/status
 - `data/runs.jsonl`：运行日志，已忽略 Git
 - `data/daily_counter.json`：每日计数，已忽略 Git
 - `data/market_pack_cache.json`：行情缓存，已忽略 Git
+
+传给 LLM 的 market pack 会先压缩为主角/参照币、事件、执行计划及衍生品摘要；链上服务的实际 API Key 不会进入 Prompt 或中转站请求。
 
 ## 注意
 
@@ -534,11 +560,13 @@ images/test.png
 ### 发帖质量门槛
 
 - 每轮先生成结构化 `marketEvent` 和 0-100 的 `publishScore`。
-- 默认低于 42 分记录为 `skipped`，不调用大模型、不消耗发帖额度，也不会计入连续失败。
+- `publishScore` 不再阻断有效 market pack，避免安静行情导致定时任务长期少发；它用于 A/B/C 编辑分级和配图证据门槛。
 - 帖子只围绕一个事件展开，例如清算热区、价格/OI背离、仓位拥挤、盘口失衡、板块轮动或相对强弱。
+- 只有通过明确方向帖限流的 A 级机会才允许完整交易方案；其他 A 级及 B/C 级都不能把普通波动包装成喊单。
+- 系统会轮换开场方式和内容原型，并对近期正文开头做结构指纹相似度检查，减少“同一句换币名”。
 - 默认最低证据图分为 42；只有真实清算、OI、多空比、盘口深度或跨市场对照等证据达到门槛时才生成图片。
 - 免费模式的证据图门槛现在默认为 42；除衍生品面板外，盘口明显失衡时可生成 Binance 真实订单簿深度图，跨市场同向验证时可生成加密货币/传统市场对照图。
-- 后台“任务设置”可调整两个门槛，也可关闭质量门槛进行兼容运行。
+- 后台“任务设置”可调整配图门槛、明确做多/做空帖日上限和文本相似度阈值。
 
 ### 动态市场发现与传统市场参照
 
@@ -547,6 +575,6 @@ images/test.png
 - 免费读取 Yahoo Finance 公共图表中的 QQQ、SPY、SOXX、IWM、NVDA、AMD、COIN、MSTR、VIX、美元指数、美债收益率、黄金和原油。
 - 传统市场只作为背景和跨市场验证，不会被当成 Binance 可交易币，也不会强行塞进每篇正文；数据会明确标记可能延迟。
 
-实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 获取上传 URL，再 PUT 图片，轮询 `/image/imageStatus`，最后发布 `contentType: 1 + bodyTextOnly + imageList`。
+实现参考 Binance 官方 `binance-skills-hub / square-post`：先调用 `/image/presignedUrl` 或 `/video/preSign` 获取上传 URL，再 PUT 媒体、轮询 `/image/imageStatus`，最后按对应 `contentType` 发布。视频没有显式时长时会通过 `ffprobe` 自动读取，并用 `ffmpeg` 提取首帧作为封面。
 
 不需要新的 Key，仍使用现有 `BINANCE_SQUARE_OPENAPI_KEY`。

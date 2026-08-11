@@ -1,13 +1,14 @@
 {
   "name": "binance-square-autopost-service",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-hosted Binance Square market-aware autopost service with editable prompts.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check src/workflow.js && node --check src/marketPack.js && node --check src/marketQuality.js && node --check src/publicDerivatives.js && node --check src/tradfi.js && node --check src/generator.js && node --check src/publisher.js && node --check src/mediaUploader.js && node --check src/imageAssets.js && node --check src/imageCard.js && node --check src/coinglass.js && node --check src/scheduler.js && node --check src/assetUniverse.js && node --check scripts/test-prompt-fixtures.js && node scripts/check-web-script.js",
+    "check": "node --check src/server.js && node --check src/workflow.js && node --check src/marketPack.js && node --check src/marketQuality.js && node --check src/publicDerivatives.js && node --check src/tradfi.js && node --check src/editorialStrategy.js && node --check src/generator.js && node --check src/publisher.js && node --check src/mediaUploader.js && node --check src/imageAssets.js && node --check src/imageCard.js && node --check src/coinglass.js && node --check src/scheduler.js && node --check src/assetUniverse.js && node --check scripts/test-prompt-fixtures.js && node --check scripts/preview-editorial-fixtures.js && node scripts/check-web-script.js",
     "dry-run": "node src/cli.js dry-run",
     "publish-once": "node src/cli.js publish",
+    "preview:editorial": "node scripts/preview-editorial-fixtures.js",
     "test:prompt": "node scripts/test-prompt-fixtures.js",
     "test": "npm run test:prompt"
   },

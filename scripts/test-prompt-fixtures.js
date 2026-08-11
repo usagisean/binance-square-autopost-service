@@ -1,7 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { renderTemplate, validatePostText, normalizeCashtags, humanPriceLevel, selectPostAngle, selectEmojiStyle, selectHumorStyle, formatTradePlanForPrompt, editorialBrief, optionalContext, evidenceFocus } = require('../src/generator');
+const { renderTemplate, validatePostText, normalizeCashtags, humanPriceLevel, selectPostAngle, selectEmojiStyle, selectHumorStyle, formatTradePlanForPrompt, editorialBrief, optionalContext, evidenceFocus, safeExternalIntel, promptSafeMarketPack } = require('../src/generator');
 const { getContentType, resolveImagePath } = require('../src/mediaUploader');
 const { selectImagePaths } = require('../src/imageAssets');
 const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
@@ -10,6 +10,8 @@ const { deriveMarketEvent, attachMarketQuality } = require('../src/marketQuality
 const { normalizeHyperliquid } = require('../src/publicDerivatives');
 const { parseChart } = require('../src/tradfi');
 const { buildTradePlan, rankScore, discoverDynamicRows } = require('../src/marketPack');
+const { buildEditorialDecision, setupGrade, explicitSignalPolicy } = require('../src/editorialStrategy');
+const { CONTENT_TYPES, buildPublishBody, parsePublishResponse } = require('../src/publisher');
 
 const root = path.join(__dirname, '..');
 const template = fs.readFileSync(path.join(root, 'templates', 'default-prompt.md'), 'utf8');
@@ -158,8 +160,25 @@ function basePack(extra = {}) {
 })();
 
 (function tradeCardPromptAndValidationAreActionable() {
-  const pack = basePack();
-  const settings = baseSettings({ tradePlanMode: 'trade_card', minPostChars: 1, maxPostChars: 300 });
+  const pack = basePack({
+    chart: { klines: Array.from({ length: 24 }, (_, i) => ({ high: 7 + i * 0.02, low: 6.9 + i * 0.02, close: 6.95 + i * 0.02 })) },
+    marketEvent: {
+      type: 'liquid_momentum',
+      score: 82,
+      stance: 'bullish',
+      claim: 'RENDER 的上行得到成交与短周期结构共同验证',
+      reasons: [{ reason: '成交与价格方向一致' }]
+    },
+    tradePlan: {
+      ...basePack().tradePlan,
+      basis: { score: 2.1 }
+    }
+  });
+  const settings = baseSettings({ tradePlanMode: 'adaptive', maxActionablePostsDaily: 3, minPostChars: 1, maxPostChars: 300 });
+  const decision = buildEditorialDecision(pack, settings, []);
+  assert.strictEqual(decision.setupGrade, 'A');
+  assert.strictEqual(decision.requiresTradeCard, true);
+  pack.editorialDecision = decision;
   const planText = formatTradePlanForPrompt(pack.tradePlan);
   assert(planText.includes('做多 $RENDER '));
   assert(planText.includes('止损 6.9'));
@@ -168,6 +187,9 @@ function basePack(extra = {}) {
   const text = '做多 $RENDER ：站稳7.25再参与，止损6.9，止盈先看7.67、再看8.16。成交放大后，最近一小时的强弱差也在扩大；$FET 和 $BTC 同期没有跟上。涨幅会讲故事，成交至少得签字，这里两者暂时同向。';
   const valid = validatePostText(text, pack, settings);
   assert.deepStrictEqual(valid.errors, []);
+
+  const oneTarget = validatePostText(text.replace('、再看8.16', ''), pack, settings);
+  assert.deepStrictEqual(oneTarget.errors, [], 'A 级方案只强制第一目标，第二目标可省略');
 
   const missingRiskPlan = validatePostText(text.replace('，止损6.9，止盈先看7.67、再看8.16', ''), pack, settings);
   assert(missingRiskPlan.errors.includes('missing_stop_loss_in_opening'));
@@ -178,6 +200,77 @@ function basePack(extra = {}) {
 
   const fourthTag = validatePostText(`${text} $NVDA 只作额外参照。`, pack, settings);
   assert(fourthTag.errors.includes('too_many_distinct_cashtags:4'));
+})();
+
+(function editorialGradesControlExecutionPrecision() {
+  const settings = baseSettings({ tradePlanMode: 'adaptive', maxActionablePostsDaily: 3 });
+  const strong = basePack({
+    chart: { klines: Array.from({ length: 24 }, (_, i) => ({ high: 7 + i * 0.02, low: 6.9 + i * 0.02, close: 6.95 + i * 0.02 })) },
+    marketEvent: { type: 'liquid_momentum', score: 78, stance: 'bullish', claim: '成交参与验证了短线突破' },
+    tradePlan: { ...basePack().tradePlan, basis: { score: 1.8 } }
+  });
+  const gradeA = buildEditorialDecision(strong, settings, []);
+  assert.strictEqual(setupGrade(strong, settings, []), 'A');
+  assert.strictEqual(gradeA.requiresTradeCard, true);
+  assert(gradeA.executionInstruction.includes('触发位'));
+
+  const mixed = basePack({
+    marketEvent: { type: 'volume_without_direction', score: 49, stance: 'neutral', claim: '成交活跃但方向没有拉开' },
+    tradePlan: { ...basePack().tradePlan, direction: 'watch', basis: { score: 0.2 } }
+  });
+  const gradeB = buildEditorialDecision(mixed, settings, []);
+  assert.strictEqual(gradeB.setupGrade, 'B');
+  assert.strictEqual(gradeB.requiresTradeCard, false);
+  assert(gradeB.executionInstruction.includes('只给一个关键'));
+
+  const weak = basePack({
+    marketEvent: { type: 'low_signal', score: 18, stance: 'neutral', claim: '量价与结构都没有形成优势' },
+    tradePlan: { ...basePack().tradePlan, direction: 'watch', basis: { score: 0 } }
+  });
+  const gradeC = buildEditorialDecision(weak, settings, []);
+  assert.strictEqual(gradeC.setupGrade, 'C');
+  assert.strictEqual(gradeC.requiresTradeCard, false);
+  const rendered = renderTemplate(template, weak, settings);
+  assert(rendered.includes('senior-trader-v3'));
+  assert(rendered.includes('不提供伪精确交易指令'));
+})();
+
+(function explicitDirectionPostsAreRareAndCooldownBounded() {
+  const settings = baseSettings({
+    tradePlanMode: 'adaptive',
+    includeTradePlan: true,
+    maxActionablePostsDaily: 3,
+    explicitSignalCooldownRuns: 8,
+    minPostChars: 1,
+    maxPostChars: 320
+  });
+  const strong = basePack({
+    chart: { klines: Array.from({ length: 24 }, (_, i) => ({ high: 7 + i * 0.02, low: 6.9 + i * 0.02, close: 6.95 + i * 0.02 })) },
+    marketEvent: { type: 'liquid_momentum', score: 82, stance: 'bullish', claim: '成交与结构共同支持 RENDER' },
+    tradePlan: { ...basePack().tradePlan, basis: { score: 2.1 } }
+  });
+  const allowed = explicitSignalPolicy(strong, settings, [], 'A');
+  assert.strictEqual(allowed.allowed, true);
+
+  const recentSignal = [{
+    status: 'published',
+    createdAt: new Date().toISOString(),
+    editorial: { requiresTradeCard: true }
+  }];
+  const throttled = buildEditorialDecision(strong, settings, recentSignal);
+  assert.strictEqual(throttled.setupGrade, 'A', '证据等级不应因为方向帖限流而被降级');
+  assert.strictEqual(throttled.requiresTradeCard, false);
+  assert.strictEqual(throttled.signalPolicy.blockedReason, 'cooldown_active');
+  assert(throttled.executionInstruction.includes('禁止出现'));
+
+  strong.editorialDecision = throttled;
+  const forbidden = validatePostText(
+    '做多 $RENDER ：站稳7.25再参与，止损6.9，止盈7.67。$FET 和 $BTC 只作参照，成交与结构仍支持主角。',
+    strong,
+    settings
+  );
+  assert(forbidden.errors.includes('explicit_direction_not_allowed:A'));
+  assert(forbidden.errors.includes('explicit_risk_card_not_allowed:A'));
 })();
 
 (function marketPackJsonSerializable() {
@@ -197,6 +290,17 @@ function basePack(extra = {}) {
   attachMarketQuality(pack);
   assert.strictEqual(pack.publishScore, pack.marketEvent.score);
   assert.doesNotThrow(() => JSON.stringify(pack.marketEvent));
+})();
+
+(function configuredNewsItemsBecomeEvidence() {
+  const pack = basePack({
+    externalIntel: {
+      newsItems: [{ source: 'official-feed', title: 'RENDER protocol update' }]
+    }
+  });
+  const event = deriveMarketEvent(pack);
+  assert.strictEqual(event.evidenceAvailable.news, true);
+  assert(event.reasons.some(x => x.reason === '存在可验证事件信息'));
 })();
 
 (function lowSignalStillPublishesText() {
@@ -311,10 +415,33 @@ function basePack(extra = {}) {
 })();
 
 (function focusedPromptOmitsHugeMarketPack() {
-  const rendered = renderTemplate(template, basePack({ hiddenMarketPackMarker: 'DO_NOT_SEND_FULL_PACK' }), baseSettings());
+  const pack = basePack({
+    hiddenMarketPackMarker: 'DO_NOT_SEND_FULL_PACK',
+    marketEvent: { type: 'relative_strength', score: 62, claim: 'RENDER 相对强度更高' },
+    externalIntel: {
+      macroNotes: '只保留这条可公开人工备注。',
+      onchainApiKeys: { alchemy: 'secret-key-must-never-enter-llm-prompt' }
+    }
+  });
+  const rendered = renderTemplate('{{MARKET_PACK_JSON}}\n{{EXTERNAL_INTEL_JSON}}', pack, baseSettings());
   assert(!rendered.includes('DO_NOT_SEND_FULL_PACK'));
+  assert(!rendered.includes('secret-key-must-never-enter-llm-prompt'));
+  assert(rendered.includes('只保留这条可公开人工备注。'));
+  assert(rendered.includes('alchemy'));
+  assert(rendered.includes('relative_strength'));
+  assert(rendered.includes('RENDER'));
+  const safeIntel = safeExternalIntel(pack);
+  assert.strictEqual(safeIntel.onchainApiKeys, undefined);
+  assert.deepStrictEqual(safeIntel.onchainProviders, ['alchemy']);
+  const safePack = promptSafeMarketPack(pack);
+  assert.strictEqual(safePack.hiddenMarketPackMarker, undefined);
+  assert.strictEqual(safePack.externalIntel.onchainApiKeys, undefined);
+})();
+
+(function focusedBuiltInPromptKeepsCashtagBoundaryRule() {
+  const rendered = renderTemplate(template, basePack(), baseSettings());
   assert(rendered.includes(evidenceFocus(basePack())));
-  assert(rendered.includes('每个 Cashtag 后必须保留一个半角空格'));
+  assert(rendered.includes('每个 Cashtag 后必须留一个半角空格'));
 })();
 
 (function everyMarketSymbolBecomesClickableCashtag() {
@@ -400,7 +527,6 @@ function basePack(extra = {}) {
   const text = '$RENDER 现价7.12，1h +2.4%、4h +4.1%、24h +9.8%，成交额8200万，前20档买盘厚，点差很小；$FET 和 $BTC 只做参照，突破 $7.25 再看。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
   assert(validation.errors.some(e => e.startsWith('too_many_metrics:')));
-  assert(validation.errors.includes('formulaic_opening'));
 })();
 
 (function repeatedMetricNameDoesNotCountAsNewMetrics() {
@@ -415,10 +541,10 @@ function basePack(extra = {}) {
   assert(!validation.errors.some(e => /banned_phrase:(现价|1h|4h|24h)/.test(e)));
 })();
 
-(function cashtagOpeningIsRejectedEvenWithoutMetrics() {
+(function cashtagOpeningIsAllowedWhenTheSentenceHasAThesis() {
   const text = '$RENDER 的真正变化在成交结构，$FET 和 $BTC 都没有同步放量，注意力明显偏向一边。';
   const validation = validatePostText(text, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
-  assert(validation.errors.includes('formulaic_opening'));
+  assert(!validation.errors.includes('formulaic_opening'));
 })();
 
 (function repeatedPanZhongOpeningIsRejected() {
@@ -456,7 +582,7 @@ function basePack(extra = {}) {
   assert.strictEqual(humanPriceLevel(1.94321), '1.943');
   assert.strictEqual(humanPriceLevel(88.1234), '88.12');
   const pack = basePack({ tradePlan: { symbol: 'TLM', bias: '偏空', direction: 'short', trigger: 0.00192731, stopLoss: 0.00246642 } });
-  const rendered = renderTemplate('{{TRADE_PLAN}}', pack, baseSettings());
+  const rendered = formatTradePlanForPrompt(pack.tradePlan);
   assert(rendered.includes('0.001927'));
   assert(rendered.includes('0.002466'));
   assert(!rendered.includes('0.00246642'));
@@ -487,9 +613,52 @@ function basePack(extra = {}) {
 (function mediaHelpers() {
   assert.strictEqual(getContentType('/tmp/a.png'), 'image/png');
   assert.strictEqual(getContentType('/tmp/a.jpg'), 'image/jpeg');
+  assert.strictEqual(getContentType('/tmp/a.mp4'), 'video/mp4');
   assert(resolveImagePath('images/test.png').endsWith('/data/images/test.png'));
   assert.deepStrictEqual(selectImagePaths({ enableImagePosts: false, imagePaths: ['images/a.png'] }), []);
   assert.deepStrictEqual(selectImagePaths({ enableImagePosts: true, imagePostMode: 'static', imagePathCount: 1, imagePaths: ['images/a.png', 'images/b.png'] }), ['images/a.png']);
+})();
+
+(function squareSkillV2PublishBodiesAndGatewayTimeout() {
+  assert.strictEqual(CONTENT_TYPES.short, 1);
+  assert.strictEqual(CONTENT_TYPES.article, 2);
+  assert.strictEqual(CONTENT_TYPES.video, 3);
+  assert.deepStrictEqual(buildPublishBody('短帖正文'), {
+    contentType: 1,
+    bodyTextOnly: '短帖正文'
+  });
+  assert.deepStrictEqual(buildPublishBody('图文正文', { format: 'short', imageUrls: ['https://img/1.png', 'https://img/2.png'] }), {
+    contentType: 1,
+    bodyTextOnly: '图文正文',
+    imageList: ['https://img/1.png', 'https://img/2.png']
+  });
+  assert.deepStrictEqual(buildPublishBody('长文正文', { format: 'article', title: '行情拆解', coverUrl: 'https://img/cover.png' }), {
+    contentType: 2,
+    bodyTextOnly: '长文正文',
+    title: '行情拆解',
+    cover: 'https://img/cover.png'
+  });
+  assert.deepStrictEqual(buildPublishBody('视频说明', {
+    format: 'video', fileTicket: 'ticket-1', coverUrl: 'https://img/cover.png', durationSeconds: 8.5
+  }), {
+    contentType: 3,
+    fileTicket: 'ticket-1',
+    cover: 'https://img/cover.png',
+    videoTimeSeconds: 8.5,
+    isPublish: true,
+    bodyTextOnly: '视频说明'
+  });
+  assert.throws(() => buildPublishBody('超量', { imageUrls: ['1', '2', '3', '4', '5'] }), /too_many_images/);
+  assert.deepStrictEqual(parsePublishResponse(504, '<html>gateway timeout</html>'), {
+    id: null,
+    shareLink: null,
+    publishStatus: 'success_without_post_id',
+    confirmation: 'gateway_timeout_after_submission'
+  });
+  assert.throws(
+    () => parsePublishResponse(200, JSON.stringify({ code: '220014', message: 'upload limit' })),
+    /daily_upload_limit_exceeded/
+  );
 })();
 
 (function coinglassEvidenceSummariesAndImageMode() {
