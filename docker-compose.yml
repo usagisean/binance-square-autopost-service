@@ -2,6 +2,8 @@ services:
   app:
     build:
       context: .
+      args:
+        BUILD_REVISION: ${APP_REVISION:-unknown}
     image: binance-square-autopost-service:local
     container_name: binance-square-autopost-service
     restart: unless-stopped

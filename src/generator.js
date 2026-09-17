@@ -3,6 +3,7 @@ const { config } = require('./config');
 const { getSettings, getActivePrompt, getSecrets, getLlmCandidates, listRuns } = require('./store');
 const { ASSET_UNIVERSE, CONTRACT_META, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 const { buildEditorialDecision, STRATEGY_VERSION } = require('./editorialStrategy');
+const { contentEvidenceInstruction } = require('./contentEvidence');
 
 function cashtag(symbol) { return `$${String(symbol || '').replace(/^\$/, '').toUpperCase()}`; }
 function compactText(text) {
@@ -96,6 +97,20 @@ function evidenceFocus(pack = {}) {
   const depth = numeric(pack.marketIntel?.symbols?.[lead.symbol]?.depth?.imbalance);
   const publicDerivatives = pack.publicDerivatives?.symbols?.[lead.symbol] || {};
   const oiToVolume = numeric(publicDerivatives.openInterestUsd) / Math.max(1, numeric(publicDerivatives.volume24hUsd));
+  const cg = pack.coinglass || {};
+  if (event.type === 'funding_dislocation') {
+    return `${lead.symbol} 永续资金费率按每小时归一为 ${signedPct(numeric(publicDerivatives.fundingRateHourly) * 100, 4)}；这是持仓成本，不是单独方向信号。`;
+  }
+  if (event.type === 'crowded_positioning') {
+    return `${lead.symbol} 来源多空比中，多头 ${numeric(cg.longShort?.longPercent).toFixed(1)}%、空头 ${numeric(cg.longShort?.shortPercent).toFixed(1)}%；这是该来源账户比例，不等于市场全部仓位比例。`;
+  }
+  if (event.type === 'price_oi_divergence') {
+    const oi = cg.openInterest?.changePct ?? pack.marketIntel?.symbols?.[lead.symbol]?.openInterestValueChange5m;
+    return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，来源持仓变化 ${signedPct(oi)}；持仓使用来源自身窗口，不能将不同时间窗当作同步变化。${cg.openInterest?.summary || ''}`;
+  }
+  if (event.type === 'liquidation_map') {
+    return `${lead.symbol} 清算图证据：${cg.heatmap?.summary || '仅能引用结构化清算区间，不得自行填价位'}。热区表示潜在清算流动性，不是必达目标。`;
+  }
   if (event.type === 'momentum_shift') return `${lead.symbol} 24h ${signedPct(lead.change24h)}，最近 1h ${signedPct(lead.change1h)}，两个周期方向相反。`;
   if (event.type === 'liquid_momentum') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，24h 成交额 ${shortUsd(lead.volume24h)}，相对 ${anchor.symbol} 多出 ${signedPct(relAnchor)}。`;
   if (event.type === 'volume_without_direction') return `${lead.symbol} 24h 成交额 ${shortUsd(lead.volume24h)}，但最近 1h 只有 ${signedPct(lead.change1h)}。`;
@@ -175,6 +190,7 @@ function promptSafeMarketPack(pack = {}) {
     source: pack.source || null,
     trio: pack.trio || null,
     marketEvent: pack.marketEvent || null,
+    contentEvidence: pack.contentEvidence || null,
     tradePlan: pack.tradePlan || null,
     marketIntel: { source: pack.marketIntel?.source || null, symbols: intel },
     publicDerivatives: { ok: pack.publicDerivatives?.ok === true, source: pack.publicDerivatives?.source || null, symbols: derivatives },
@@ -219,11 +235,11 @@ function selectPostAngle(pack = {}) {
     funding_dislocation: { id: 'funding_dislocation', instruction: '围绕永续资金成本写：说清是哪一侧在付费、仓位是否拥挤，以及价格需要怎样变化才会验证判断。注明这是跨交易所参照，不要冒充 Binance 数据。' },
     positioning_without_price: { id: 'positioning_without_price', instruction: '围绕“永续持仓不低、价格却没走远”写，说明杠杆仓位在等待方向；不猜多空比例，不把它写成必涨或必跌。注明是跨所公共数据。' },
     cross_market_confirmation: { id: 'cross_market_confirmation', instruction: '围绕币圈与传统市场的同向验证写，但主角仍是加密货币；传统资产只引用一到两个，不写成美股复盘，也不要把相关性说成因果。' },
-    momentum_shift: { id: 'momentum_shift', instruction: '直接说清 24h 方向与最近 1h 为什么反向：是加速结束、资金换手还是短线转弱；只选一个解释，不罗列全部指标。' },
+    momentum_shift: { id: 'momentum_shift', instruction: '解释 24h 与最近 1h 的周期分歧；没有对应证据，不猜资金换手或趋势反转。' },
     liquid_momentum: { id: 'liquid_momentum', instruction: '重点说这次短线变化有真实成交规模，不是小额异动；只比较一次大盘，不罗列盘口。' },
     volume_without_direction: { id: 'volume_without_direction', instruction: '重点写“成交活跃却没有形成方向”这层矛盾，解释它意味着分歧而不是趋势；不要硬写成看多或看空。' },
     orderbook_imbalance: { id: 'orderbook_imbalance', instruction: '盘口最多占一句，只作辅助证据；主旨必须来自价格行为、成交或相对强弱，不能再写成“挂单是否与走势一致”的固定分析。' },
-    late_momentum: { id: 'late_momentum', instruction: '波动已经发生，正文判断增量资金是否还在，不要用“热闹、追高、拿不回”这些套话。' },
+    late_momentum: { id: 'late_momentum', instruction: '波动已经发生，结合已收盘量比解释延续是否得到验证；没有量比不推断增量资金，不用万能放量结尾。' },
     sector_rotation: { id: 'sector_rotation', instruction: '只写板块内部注意力如何迁移，以及主角为何胜出或掉队；不要平均介绍三个币。' },
     relative_strength: { id: 'relative_strength', instruction: '用一个相对强弱差提出清晰结论，另外两个币只用一句作参照；不要逐项复盘。' }
   };
@@ -395,7 +411,11 @@ function executionGuide(decision = {}, tradePlan = null, pack = {}) {
   const reference = tradePlan.direction === 'watch'
     ? `${humanPriceLevel(basis.tacticalLow || basis.recentLow)}—${humanPriceLevel(basis.tacticalHigh || basis.recentHigh)}`
     : trigger;
-  return `${decision.setupGrade || 'B'} 级内容：只能引用一个改变赔率的位置（${reference || '无可靠位置'}）；用它说明什么时候交易价值会明显上升，不要写“做多/做空/止损/止盈”。`;
+  const evidence = pack.contentEvidence;
+  const observed = evidence?.available
+    ? `最近已收盘 1h 区间为 ${humanPriceLevel(evidence.recentLow)}—${humanPriceLevel(evidence.recentHigh)}。`
+    : '缺少可核对的已收盘短周期区间，允许完全省略价位。';
+  return `${decision.setupGrade || 'B'} 级内容：${observed}计算触发参考 ${reference || '无'} 不是已验证的支撑阻力。只解释具体事实及反证，不要写“赔率开关”或“交易价值明显上升”，不要写“做多/做空/止损/止盈”。`;
 }
 
 function selectHumorStyle(pack = {}) {
@@ -469,7 +489,7 @@ function editorialBrief(pack = {}, settings = getSettings()) {
   const emojiStyle = selectEmojiStyle(pack);
   const humorStyle = selectHumorStyle(pack);
   return [
-    '策略版本：senior-trader-v3。它优先于旧 Prompt 中要求每帖都写“做多/做空+止损止盈”的规则。',
+    '策略版本：evidence-editor-v4。它优先于旧 Prompt 中要求每帖都写三币比较、价位开关或“做多/做空+止损止盈”的规则。',
     `本轮等级：${decision.setupGrade}；类型：${decision.archetype}；倾向：${decision.stance}`,
     `唯一论点：${decision.thesis}`,
     `读者收获：${decision.readerPromise}`,
@@ -482,11 +502,19 @@ function editorialBrief(pack = {}, settings = getSettings()) {
     `最强证据：${evidenceFocus(pack)}`,
     `备选证据：${reasons || '仅使用 facts 中最相关的一项'}`,
     '证据顺序：真实事件/合约仓位与清算 > 价格成交与结构 > 相对强弱 > 单次盘口快照。低等级证据不能包装成高确信度结论。',
-    `首屏要求：前 90 个字必须完成“主角为什么比参照币更值得打开交易页 + 最强证据”；${decision.requiresTradeCard ? '本轮允许一次明确方向方案。' : '本轮禁止出现做多、做空、止损、止盈。'}`,
+    `首屏要求：前 90 个字给出主角最有信息量的一项变化和它的意义，不先喊值得交易；${decision.requiresTradeCard ? '本轮允许一次明确方向方案。' : '本轮禁止出现做多、做空、止损、止盈。'}`,
+    contentEvidenceInstruction(pack),
     `幽默：${humorStyle.instruction} 全文最多一处；没有自然笑点就完全不写。`,
-    '标签限制：正文只能出现 lead、peer、anchor 这 3 个不同 Cashtag；Square 超过 3 个交易标签会拒绝发布。',
+    cashtagInstruction(pack, settings),
     `表情：${emojiStyle.instruction} 全文最多 1 个。`
   ].join('\n');
+}
+
+function cashtagInstruction(pack, settings) {
+  const tags = [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol].map(cashtag);
+  return settings.requireTrioCashtags === true
+    ? `标签限制：必须自然包含 ${tags.join(' ')}，主角最多两次，参照各一次，不能新增标签；每个标签后留半角空格。`
+    : `标签限制：必须包含主角 ${tags[0]}；${tags[1]} 和 ${tags[2]} 仅在有实际对比价值时选用，可不出现。最多 3 种标签，只能来自这组；主角最多两次、参照各一次，每个标签后留半角空格。不为标签强凑三币比较。`;
 }
 
 function renderTemplate(template, pack, settings = getSettings()) {
@@ -536,6 +564,8 @@ function renderTemplate(template, pack, settings = getSettings()) {
     MARKET_EVENT_JSON: JSON.stringify(pack.marketEvent || {}, null, 2),
     EVIDENCE_FOCUS: evidenceFocus(pack),
     EDITORIAL_BRIEF: editorialBrief(pack, settings),
+    CASHTAG_RULE: cashtagInstruction(pack, settings),
+    CONTENT_EVIDENCE: contentEvidenceInstruction(pack),
     RECENT_OVERUSED_PHRASES: overused.length ? overused.map(x => `${x.phrase}（近期出现 ${x.count} 次）`).join('、') : '无',
     EXTERNAL_INTEL_JSON: JSON.stringify(safeExternalIntel(pack), null, 2),
     OPTIONAL_CONTEXT: optionalContext(pack),
@@ -556,23 +586,22 @@ function mockGenerate(pack) {
   const { lead, peer, anchor } = pack.trio;
   const l = cashtag(lead.symbol), p = cashtag(peer.symbol), a = cashtag(anchor.symbol);
   const decision = pack.editorialDecision || buildEditorialDecision(pack, getSettings(), []);
-  const leadStronger = Number(lead.change1h || 0) >= Number(peer.change1h || 0);
   const trigger = humanPriceLevel(pack.tradePlan?.trigger);
   const stop = humanPriceLevel(pack.tradePlan?.stopLoss);
   const tp1 = humanPriceLevel(pack.tradePlan?.takeProfit1);
   if (decision.requiresTradeCard && pack.tradePlan?.direction === 'long') {
-    return `${l} 放量站稳 ${trigger}，我才会考虑做多；止损放 ${stop}，第一目标看 ${tp1}。它近 1h ${signedPct(lead.change1h)}，24h 成交额 ${shortUsd(lead.volume24h)}，价格和参与度暂时同向；${p} 和 ${a} 同期都没有给出更强的变化。条件没到就没有订单，到了以后成交若迅速缩回，防守位照常执行。`;
+    return `${l} 只有站稳 ${trigger} 才考虑做多；止损放 ${stop}，第一目标看 ${tp1}。它近 1h ${signedPct(lead.change1h)}，24h 成交额 ${shortUsd(lead.volume24h)}；${p} 和 ${a} 同期分别 ${signedPct(peer.change1h)}、${signedPct(anchor.change1h)}。这只是条件方案，目标按风险倍数计算，不是历史阻力，也不是必达位置；条件未到不能当作已经成交，触发后若价格迅速收回，原判断就需要重审。`;
   }
   if (decision.requiresTradeCard && pack.tradePlan?.direction === 'short') {
-    return `${l} 放量跌破 ${trigger}，我才会考虑做空；止损放 ${stop}，第一目标看 ${tp1}。它近 1h ${signedPct(lead.change1h)}，24h 成交额 ${shortUsd(lead.volume24h)}，弱势不是一笔小单造成；${p} 和 ${a} 同期都更稳。条件没到就没有订单，触发后若价格很快收回，防守位照常执行。`;
+    return `${l} 只有跌破 ${trigger} 才考虑做空；止损放 ${stop}，第一目标看 ${tp1}。它近 1h ${signedPct(lead.change1h)}，24h 成交额 ${shortUsd(lead.volume24h)}；${p} 和 ${a} 同期分别 ${signedPct(peer.change1h)}、${signedPct(anchor.change1h)}。一天的成交规模并不能证明当前抛压增加，目标也是风险倍数参考而非必达位置。条件未到不能当作已经成交，触发后若很快收回，防守仍需执行。`;
   }
   if (decision.setupGrade === 'A') {
-    return `这三个币里，我会先把 ${l} 留在交易页。它近 1h ${signedPct(lead.change1h)}，24h 成交额已有 ${shortUsd(lead.volume24h)}，相对强弱和真实参与度同时改善；${p} 和 ${a} 没有出现同样的变化。${trigger || '上一轮高点'} 是赔率开关：量价一起越过去，资金可能继续往主角集中；价格过去、成交没跟，说明这份优势只是暂借的。`;
+    return `${l} 最近 1h ${signedPct(lead.change1h)}，与 24h ${signedPct(lead.change24h)} 需要分开理解：短周期变化不自动等于整段趋势延续。${p} 和 ${a} 同期分别 ${signedPct(peer.change1h)}、${signedPct(anchor.change1h)}，能提供市场参照，但不能解释资金来自哪里。24h 成交额 ${shortUsd(lead.volume24h)} 只说明日内规模；要判断这一小时的变化是否有量能配合，还需要已收盘成交对照。若相对优势消失，原来的强弱判断也应收回。`;
   }
-  if (decision.setupGrade === 'B' || leadStronger) {
-    return `${l} 的优势不在涨得最多，而在最近 1h ${signedPct(lead.change1h)} 时，成交规模仍有 ${shortUsd(lead.volume24h)}，说明它不是靠几笔小单刷存在感。${p} 和 ${a} 的短线变化都更平，三者放在一起，主角更像资金正在筛选的方向。${trigger || '区间上沿'} 附近如果量能再抬一档，交易价值会明显增加；只有价格过去而成交掉队，这个判断才需要收回。`;
+  if (decision.setupGrade === 'B') {
+    return `${l} 最近 1h ${signedPct(lead.change1h)}，24h ${signedPct(lead.change24h)}，眼下更需要区分短周期变化与日内方向。${p} 和 ${a} 同期分别 ${signedPct(peer.change1h)}、${signedPct(anchor.change1h)}，这是相对强弱参照，不是资金流向证明。24h 成交额 ${shortUsd(lead.volume24h)} 也不能替代最近一小时量能。只有短周期差异持续，当前判断才有延续依据；如果差异很快收敛，就应把它当作短暂异动，而不是已经验证的趋势。`;
   }
-  return `${l} 眼下最容易被当作机会：波动出现了，成交却没有换来相对优势。${p} 和 ${a} 同期更稳，说明资金还没把主角当成优先选择。真正能让交易价值上升的，不是再来一根随机 K 线，而是 ${trigger || '区间边界'} 附近出现放量并把强弱差拉开；在那之前，把它留在自选里比匆忙下单更合理。`;
+  return `${l} 最近 1h ${signedPct(lead.change1h)}，仅凭这项变化还不能确认单边趋势。${p} 和 ${a} 同期分别 ${signedPct(peer.change1h)}、${signedPct(anchor.change1h)}，参照数据也不等于主角出现了新增资金。这里最容易误读的是把波动当趋势、把 24h 成交规模当短线放量。现有证据不足以支持精确入场位置；如果随后出现持续的相对强弱差，并获得已收盘量能或结构验证，才值得重新评估，不能用单次盘口替代验证。`;
 }
 
 async function callOpenAI(prompt, settings) {
@@ -900,6 +929,17 @@ function maxRecentOpeningSimilarity(text) {
   return max;
 }
 
+function templateFingerprint(text) {
+  return String(text || '').replace(/\$[A-Z][A-Z0-9]{0,23}/g, '币种')
+    .replace(/\d+(?:[.,]\d+)*(?:%|[MBK])?/gi, '数字').replace(/\s+/g, '');
+}
+
+function maxRecentTemplateSimilarity(text, history = listRuns(60)) {
+  const base = textBigrams(templateFingerprint(text));
+  return history.filter(run => run.status === 'published' && run.postText).slice(0, 24)
+    .reduce((max, run) => Math.max(max, jaccard(base, textBigrams(templateFingerprint(run.postText)))), 0);
+}
+
 function textHasLevel(text, value) {
   const expected = humanPriceLevel(value).replace(/,/g, '');
   if (!expected) return false;
@@ -921,16 +961,29 @@ function validatePostText(text, pack, settings = getSettings()) {
   const hardMin = configuredMin >= 150 ? configuredMin - 10 : configuredMin;
   if (len < hardMin) errors.push(`too_short:${len}`);
   if (len > Number(settings.maxPostChars || 260)) errors.push(`too_long:${len}`);
-  const fixedBanned = ['不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '需注意风险', '暂无可用美股/ETF行情数据', '美股参照数据缺失', '本轮不使用美股作为判断依据', '暂无可用AI板块行情数据', 'AI板块数据不足'];
+  const fixedBanned = ['赔率开关', '交易价值会明显', '交易价值明显', '更该留在交易页', '留在交易页', '不构成投资建议', '以上仅供参考', '公开信息显示', '简短原因', '简要原因', '可能原因', '需注意风险', '暂无可用美股/ETF行情数据', '美股参照数据缺失', '本轮不使用美股作为判断依据', '暂无可用AI板块行情数据', 'AI板块数据不足'];
   const banned = effectiveBannedPhrases(settings, fixedBanned);
   for (const phrase of banned) {
     if (clean.includes(phrase)) errors.push(`banned_phrase:${phrase}`);
+  }
+  // Narrow guard for affirmative short-window volume claims. Conditional
+  // scenarios remain valid; this is not a substitute for a factual review.
+  if (pack.contentEvidence?.volumeTrend !== 'expanding') {
+    for (const sentence of clean.split(/[。！？；\n]/)) {
+      if (/(如果|若|只有|才|需要|仍需|等待|能否|是否|不能|不等于|不代表|尚未|并非|没有|缺少|误读|误把|把.{0,30}当|放大后|放量后)/.test(sentence)) continue;
+      if (/(成交(?:量|额)?(?:正在|持续|明显)?(?:放大|增加)|短线放量|量价同步)/.test(sentence)) {
+        errors.push('unsupported_short_window_volume_claim');
+        break;
+      }
+    }
   }
   // Repetition history is editorial guidance, not a hard publish gate. Making
   // every recently frequent word a validation error caused long repair loops
   // and reduced post volume during otherwise valid market runs.
   if (settings.requireCashtags) {
-    for (const symbol of [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol]) {
+    const required = settings.requireTrioCashtags === true
+      ? [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol] : [pack.trio.lead.symbol];
+    for (const symbol of required) {
       if (!clean.includes(cashtag(symbol))) errors.push(`missing_cashtag:${symbol}`);
       const clickable = new RegExp(`\\$${escapeRegExp(String(symbol || '').toUpperCase())}(?=\\s|$)`);
       if (!clickable.test(clean)) errors.push(`unclickable_cashtag_boundary:${symbol}`);
@@ -943,6 +996,10 @@ function validatePostText(text, pack, settings = getSettings()) {
     const distinctTags = [...clean.matchAll(/\$([A-Z][A-Z0-9]{0,23})(?=\s|$)/g)].map(match => match[1]);
     const distinctCount = new Set(distinctTags).size;
     if (distinctCount > 3) errors.push(`too_many_distinct_cashtags:${distinctCount}`);
+    const allowed = new Set([leadSymbolRaw, peerSymbolRaw, anchorSymbolRaw]);
+    for (const tag of new Set(distinctTags)) {
+      if (!allowed.has(tag)) errors.push(`unexpected_cashtag:${tag}`);
+    }
   }
   const decision = resolveEditorialDecision(pack, settings);
   const tradeCardMode = decision.requiresTradeCard === true && settings.includeTradePlan !== false;
@@ -985,6 +1042,8 @@ function validatePostText(text, pack, settings = getSettings()) {
   if (sim >= Number(settings.similarityThreshold || 0.72)) errors.push(`too_similar:${sim.toFixed(2)}`);
   const openingSimilarity = maxRecentOpeningSimilarity(clean);
   if (openingSimilarity >= 0.76) errors.push(`opening_too_similar:${openingSimilarity.toFixed(2)}`);
+  const templateSimilarity = maxRecentTemplateSimilarity(clean);
+  if (templateSimilarity >= 0.62) errors.push(`template_too_similar:${templateSimilarity.toFixed(2)}`);
   return { ok: errors.length === 0, errors, text: clean, length: len };
 }
 
@@ -995,13 +1054,11 @@ function validationError(validation) {
 function repairPromptForPost(text, validation, pack, settings = getSettings()) {
   const min = Number(settings.minPostChars || 160);
   const max = Number(settings.maxPostChars || 260);
-  const symbols = [pack.trio.lead.symbol, pack.trio.peer.symbol, pack.trio.anchor.symbol];
-  const tags = symbols.map(cashtag).join(' ');
   const decision = resolveEditorialDecision(pack, settings);
   const tradeCardMode = decision.requiresTradeCard === true;
   const openingRule = tradeCardMode
     ? `前 140 个字内自然写清方向、触发、防守和第一目标，不要求用固定句式开头：${executionGuide(decision, pack.tradePlan, pack)}`
-    : `${decision.executionInstruction} 全文禁止出现“做多、做空、止损、止盈”，只写偏向、可交易性和一个赔率开关。`;
+    : `${decision.executionInstruction} 全文禁止出现“做多、做空、止损、止盈”，写具体变化及反证，不强制价位结尾。`;
   return `下面这条 Binance Square 正文已经生成，但没有通过本地校验：${validation.errors.join(',')}。
 
 请只输出改写后的最终正文，不解释过程。
@@ -1009,16 +1066,16 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 硬性要求：
 1. 字数必须在 ${min} 到 ${max} 个中文字符之间，不能超过 ${max}。
 2. 本轮属于 ${decision.setupGrade} 级 ${decision.archetype}；结构要求：${decision.structureInstruction}
-3. 必须保留并自然提到这 3 个 Cashtag：${tags}；每个 Cashtag 后必须有半角空格，例如“$BTC 走强”“$SOL 和 $ETH 同步”。全文只能出现这 3 个不同 Cashtag，不得加入第 4 个币、股票或 ETF 标签。
+3. ${cashtagInstruction(pack, settings)}
 4. ${openingRule}
 5. 只能使用 facts / takeaways / market pack 里的真实数据，禁止编造。
-6. ${tradeCardMode ? '前 140 个字内写完方向、触发、防守和第一目标；第二目标可以省略。' : '前 90 个字内说清主角为什么比参照币更值得打开交易页，并给出最强证据；不要写做多、做空、止损或止盈。'}
+6. ${tradeCardMode ? '前 140 个字内写完方向、触发、防守和第一目标；第二目标可以省略。' : '前 90 个字给出主角一项异常变化及其含义；不要写做多、做空、止损或止盈。'}
 7. 交易卡数字不计入证据数量；原因段最多再写 3 个关键数字，只选最有用的两类证据。
 8. 原因段必须围绕主角解释这一方向，不得再复述交易卡全部数字，也不能同时给相反方向。
-9. peer 和 anchor 只能各出现一次，必须合在同一个短句里；主角 Cashtag 最多两次。正文要让读者获得一次明确的标的取舍，而不是三币播报。
+9. peer 和 anchor 若使用，各最多一次；不强制三币比较，不强制一个价位结尾。
 10. 开场方式：${decision.openingInstruction} 不得复用原文开头。
 11. 不要写“反抽/承接/压住手/容错低/我的处理是/计划偏多/计划偏空/条件计划/只做条件”。
-12. 不要标题、项目符号、Markdown、免责声明或报告腔；不要直接号召“点击、下单、上车”，靠真实信息差和赔率让人愿意打开交易页。
+12. 不要项目符号、Markdown、免责声明或报告腔；不要号召“点击、下单、上车”，不要写“赔率开关、交易价值明显上升、留在交易页”。可分两到三个短段。
 13. 如果美股/ETF或AI板块参照缺失，正文直接忽略缺失部分。
 14. 禁止出现这些表达：${effectiveBannedPhrases(settings).join('、')}。
 15. ${selectEmojiStyle(pack).instruction} 全文最多 1 个；不要使用 🚀、🤑、💯。
@@ -1027,6 +1084,9 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 
 原文：
 ${text}
+
+事实边界：
+${contentEvidenceInstruction(pack)}
 
 facts：
 ${(pack.facts || []).join('\n')}
@@ -1063,9 +1123,9 @@ async function generatePost(pack) {
   const basePrompt = renderTemplate(prompt.content, pack, settings);
   const hasEditorialBrief = /\{\{\s*EDITORIAL_BRIEF\s*\}\}/.test(prompt.content || '');
   const runtimeEditorial = hasEditorialBrief
-    ? '上方已经包含本轮 senior-trader-v3 编辑决策，不要重复解读或另起一套结构。'
+    ? '上方已经包含本轮 evidence-editor-v4 编辑决策，不要重复解读或另起一套结构。'
     : editorialBrief(pack, settings);
-  const renderedPrompt = `${basePrompt}\n\n【当前运行策略：优先级最高】\n如果上方旧 Prompt 要求每一帖都以“做多/做空/观望”开头，或每帖都写止损和两档止盈，以这里的 senior-trader-v3 决策为准。只有 editorial.requiresTradeCard=true 才允许出现“做多、做空、止损、止盈”。\n${runtimeEditorial}\n\n【运行时事实，不得照抄 JSON】\n近期过度使用、这次必须避开的词：${recentOverusedPhrases().map(x => x.phrase).join('、') || '无'}。\n结构化事件：\n${JSON.stringify(pack.marketEvent || {}, null, 2)}\n编辑决策：\n${JSON.stringify(editorial, null, 2)}`;
+  const renderedPrompt = `${basePrompt}\n\n【当前运行策略：优先级最高】\n以 evidence-editor-v4 为准：不强制三币比较、价位或固定结尾，不写“赔率开关、交易价值明显上升、留在交易页”。只有 editorial.requiresTradeCard=true 才允许出现“做多、做空、止损、止盈”。\n${runtimeEditorial}\n${cashtagInstruction(pack, settings)}\n${contentEvidenceInstruction(pack)}\n\n【运行时事实，不得照抄 JSON】\n近期过度使用、这次必须避开的词：${recentOverusedPhrases().map(x => x.phrase).join('、') || '无'}。\n结构化事件：\n${JSON.stringify(pack.marketEvent || {}, null, 2)}\n编辑决策：\n${JSON.stringify(editorial, null, 2)}`;
   const provider = String(settings.llmProvider || config.llmProvider || 'mock').toLowerCase();
   if (provider === 'mock') {
     const text = mockGenerate(pack);
@@ -1153,4 +1213,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, editorial, attempts: attemptsLegacy };
 }
 
-module.exports = { generatePost, mockGenerate, validatePostText, renderTemplate, cashtag, normalizeCashtags, humanPriceLevel, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, selectHumorStyle, formatTradePlanForPrompt, tradeCardInstruction, executionGuide, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext, safeExternalIntel, promptSafeMarketPack, openingFingerprint, maxRecentOpeningSimilarity, resolveEditorialDecision };
+module.exports = { maxRecentTemplateSimilarity, templateFingerprint, cashtagInstruction, generatePost, mockGenerate, validatePostText, renderTemplate, cashtag, normalizeCashtags, humanPriceLevel, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, selectHumorStyle, formatTradePlanForPrompt, tradeCardInstruction, executionGuide, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext, safeExternalIntel, promptSafeMarketPack, openingFingerprint, maxRecentOpeningSimilarity, resolveEditorialDecision };

@@ -480,6 +480,7 @@ function normalizeKlines(rows = []) {
     low: Number(row[3]),
     close: Number(row[4]),
     volume: Number(row[5]),
+    quoteVolume: row[7] == null ? null : Number(row[7]),
     closeTime: Number(row[6])
   })).filter(k => Number.isFinite(k.high) && Number.isFinite(k.low) && Number.isFinite(k.close) && k.close > 0);
 }
@@ -885,6 +886,8 @@ async function buildMarketPack() {
 }
 async function finalizePack(pack) {
   const structured = attachStructuredMarketPack(pack);
+  const { buildContentEvidence } = require('./contentEvidence');
+  structured.contentEvidence = buildContentEvidence(structured);
   attachTradfi(structured, await fetchTradfiReferences());
   return attachMarketQuality(structured);
 }

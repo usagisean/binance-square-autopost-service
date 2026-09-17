@@ -26,6 +26,7 @@ function baseSettings(extra = {}) {
     maxPostChars: 260,
     bannedPhrases: [],
     requireCashtags: true,
+    requireTrioCashtags: true,
     includeTradePlan: true,
     tradePlanMode: 'opinion',
     similarityThreshold: 0,
@@ -231,7 +232,7 @@ function basePack(extra = {}) {
   assert.strictEqual(gradeC.setupGrade, 'C');
   assert.strictEqual(gradeC.requiresTradeCard, false);
   const rendered = renderTemplate(template, weak, settings);
-  assert(rendered.includes('senior-trader-v3'));
+  assert(rendered.includes('evidence-editor-v4'));
   assert(rendered.includes('不提供伪精确交易指令'));
 })();
 

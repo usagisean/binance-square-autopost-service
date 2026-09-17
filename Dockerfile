@@ -1,7 +1,9 @@
 FROM node:20-alpine
 
 WORKDIR /app
+ARG BUILD_REVISION=unknown
 ENV NODE_ENV=production \
+    APP_REVISION=$BUILD_REVISION \
     HOST=0.0.0.0 \
     PORT=8787
 

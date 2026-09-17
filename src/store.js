@@ -4,8 +4,8 @@ const crypto = require('crypto');
 const { DATA_DIR, ROOT, config } = require('./config');
 const { DEFAULT_SQUARE_TAG_SYMBOLS, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 
-const BUILTIN_PROMPT_VERSION = 3;
-const EDITORIAL_STRATEGY_VERSION = 3;
+const BUILTIN_PROMPT_VERSION = 4;
+const EDITORIAL_STRATEGY_VERSION = 4;
 
 const paths = {
   settings: path.join(DATA_DIR, 'settings.json'),
@@ -37,20 +37,21 @@ const defaultSettings = {
   minSpotQuoteVolume: 5000000,
   marketCacheMaxAgeMinutes: 360,
   requireCashtags: true,
+  requireTrioCashtags: false,
   notifyTelegram: true,
   leadCooldownRuns: 6,
   leadCooldownMinutes: 300,
   maxConsecutiveFailures: 3,
   similarityThreshold: 0.72,
   editorialStrategyVersion: EDITORIAL_STRATEGY_VERSION,
+  qualityPresetVersion: EDITORIAL_STRATEGY_VERSION,
   // Explicit “做多/做空 + 风险位” posts should be rare. Most posts sell the
   // opportunity through evidence and relative payoff, not a repetitive card.
   maxActionablePostsDaily: 3,
   explicitSignalCooldownRuns: 8,
-  // Legacy field retained for settings-file compatibility. Quality scoring no
-  // longer blocks a valid scheduled post; it only informs copy and images.
-  enableQualityGate: false,
-  minPublishScore: 42,
+  // v4 applies this quality preset once; later UI choices remain persistent.
+  enableQualityGate: true,
+  minPublishScore: 58,
   minImageEvidenceScore: 42,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
@@ -103,19 +104,48 @@ function writeJson(file, value) {
 }
 
 function initStore() {
+  const previousSettings = readJson(paths.settings, {});
+  const previousPrompts = readJson(paths.prompts, []);
+  const needsUpgrade = Number(previousSettings.qualityPresetVersion || 0) < EDITORIAL_STRATEGY_VERSION
+    || Number(previousSettings.editorialStrategyVersion || 0) < EDITORIAL_STRATEGY_VERSION
+    || !Array.isArray(previousPrompts)
+    || !previousPrompts.some(p => Number(p.builtinVersion || 0) >= BUILTIN_PROMPT_VERSION);
+  if (needsUpgrade && (fs.existsSync(paths.settings) || fs.existsSync(paths.prompts))) {
+    const backupDir = path.join(DATA_DIR, 'backups', 'editorial-v4');
+    fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+    for (const file of [paths.settings, paths.prompts]) {
+      if (!fs.existsSync(file)) continue;
+      const backup = path.join(backupDir, path.basename(file));
+      if (!fs.existsSync(backup)) {
+        fs.copyFileSync(file, backup, fs.constants.COPYFILE_EXCL);
+        fs.chmodSync(backup, 0o600);
+      }
+    }
+  }
   if (!fs.existsSync(paths.settings)) {
     writeJson(paths.settings, defaultSettings);
   } else {
     const stored = readJson(paths.settings, {});
-    if (Number(stored.editorialStrategyVersion || 0) < EDITORIAL_STRATEGY_VERSION) {
-      // The previous default forced a complete signal card into every post.
-      // Migrate that default once, while keeping explicitly configured modern
-      // modes untouched on future upgrades.
-      if (['trade_card', 'directional', '', undefined].includes(stored.tradePlanMode)) stored.tradePlanMode = 'adaptive';
+    if (Number(stored.editorialStrategyVersion || 0) < EDITORIAL_STRATEGY_VERSION
+      || Number(stored.qualityPresetVersion || 0) < EDITORIAL_STRATEGY_VERSION) {
+      // Only pre-v3 installations need the old signal-card migration. Do not
+      // overwrite v3 users' explicit frequency/mode choices during v4 upgrade.
+      if (Number(stored.editorialStrategyVersion || 0) < 3) {
+        if (['trade_card', 'directional', '', undefined].includes(stored.tradePlanMode)) stored.tradePlanMode = 'adaptive';
+        const previousExplicitCap = Number(stored.maxActionablePostsDaily ?? defaultSettings.maxActionablePostsDaily);
+        stored.maxActionablePostsDaily = Math.max(0, Math.min(3, Number.isFinite(previousExplicitCap) ? previousExplicitCap : defaultSettings.maxActionablePostsDaily));
+        stored.explicitSignalCooldownRuns = Math.max(0, Math.min(50, Number(stored.explicitSignalCooldownRuns ?? defaultSettings.explicitSignalCooldownRuns)));
+      }
+      if (Number(stored.qualityPresetVersion || 0) < EDITORIAL_STRATEGY_VERSION) {
+        // Apply the requested optimized production preset once. The previous
+        // version forcibly persisted false, so retaining it disables this fix.
+        stored.enableQualityGate = true;
+        const threshold = Number(stored.minPublishScore);
+        stored.minPublishScore = Number.isFinite(threshold) ? Math.min(100, Math.max(58, threshold)) : 58;
+        stored.requireTrioCashtags = false;
+        stored.qualityPresetVersion = EDITORIAL_STRATEGY_VERSION;
+      }
       stored.editorialStrategyVersion = EDITORIAL_STRATEGY_VERSION;
-      const previousExplicitCap = Number(stored.maxActionablePostsDaily ?? defaultSettings.maxActionablePostsDaily);
-      stored.maxActionablePostsDaily = Math.max(0, Math.min(3, Number.isFinite(previousExplicitCap) ? previousExplicitCap : defaultSettings.maxActionablePostsDaily));
-      stored.explicitSignalCooldownRuns = Math.max(0, Math.min(50, Number(stored.explicitSignalCooldownRuns ?? defaultSettings.explicitSignalCooldownRuns)));
       stored.updatedAt = nowIso();
       writeJson(paths.settings, stored);
     }
@@ -184,7 +214,8 @@ function saveSettings(patch) {
   const explicitCooldown = Number(next.explicitSignalCooldownRuns ?? defaultSettings.explicitSignalCooldownRuns);
   next.maxActionablePostsDaily = Math.max(0, Math.min(20, Number.isFinite(explicitCap) ? explicitCap : defaultSettings.maxActionablePostsDaily));
   next.explicitSignalCooldownRuns = Math.max(0, Math.min(50, Number.isFinite(explicitCooldown) ? explicitCooldown : defaultSettings.explicitSignalCooldownRuns));
-  next.enableQualityGate = false;
+  next.enableQualityGate = next.enableQualityGate !== false;
+  next.requireTrioCashtags = next.requireTrioCashtags === true;
   next.minPublishScore = Math.max(0, Math.min(100, Number(next.minPublishScore ?? defaultSettings.minPublishScore)));
   next.minImageEvidenceScore = Math.max(0, Math.min(100, Number(next.minImageEvidenceScore ?? defaultSettings.minImageEvidenceScore)));
   next.includeTradePlan = next.includeTradePlan !== false;

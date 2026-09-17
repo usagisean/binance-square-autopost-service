@@ -52,6 +52,9 @@ function deriveMarketEvent(pack = {}) {
   add(clamp(Math.abs(n(lead.change24h)) * 0.45, 0, 12), '日内波动');
   add(clamp(n(lead.amplitude24h) * 0.5, 0, 12), '振幅活跃');
   add(clamp((Math.log10(Math.max(1, n(lead.volume24h))) - 6) * 5, 0, 12), '成交额达到可讨论规模');
+  if (pack.contentEvidence?.available && pack.contentEvidence.volumeTrend === 'expanding') {
+    add(8, '已收盘短周期成交量高于此前每小时均值');
+  }
   add(clamp(Math.max(Math.abs(relPeer), Math.abs(relAnchor)) * 2.2, 0, 12), '相对强弱明显');
   if (Math.abs(depth) >= 15) add(clamp(Math.abs(depth) / 4, 4, 10), '盘口明显失衡');
   if (available.openInterest && Math.abs(oiChange) >= 1) add(clamp(Math.abs(oiChange) * 2, 5, 12), '持仓变化异常');
@@ -98,17 +101,17 @@ function deriveMarketEvent(pack = {}) {
     claim = lead.bucket === 'ai' ? `${lead.symbol} 与纳指/半导体情绪出现同向验证` : `${lead.symbol} 与美股 crypto beta 出现同向验证`;
   } else if (momentumShift) {
     type = 'momentum_shift';
-    claim = `${lead.symbol} 的 24h 方向与最近 1h 已经反向，短线动量正在换挡`;
+    claim = `${lead.symbol} 的 24h 方向与最近 1h 反向，但这还不能证明趋势反转`;
   } else if (liquidMomentum) {
     type = 'liquid_momentum';
     claim = lead1h > 0
-      ? `${lead.symbol} 的短线走强有成交规模支撑，不只是小额拉动`
-      : `${lead.symbol} 的短线走弱发生在活跃成交中，不只是盘口噪声`;
+      ? `${lead.symbol} 短线走强，过去 24h 成交规模较大；短线量能是否同步仍需单独验证`
+      : `${lead.symbol} 短线走弱，过去 24h 成交规模较大；不能由此断言抛压正在增加`;
   } else if (momentumActive) {
     type = 'late_momentum';
     claim = lead1h > 0
-      ? `${lead.symbol} 的短线动量仍在扩张，关键是成交和相对强弱能否同步`
-      : `${lead.symbol} 的短线弱势仍在扩张，关键是抛压是否继续放大`;
+      ? `${lead.symbol} 最近 1h 明显上涨，需区分价格异动与有量能验证的延续`
+      : `${lead.symbol} 最近 1h 明显下跌，不能把价格变化直接解释为资金流出`;
   } else if (relativeActive) {
     type = 'relative_strength';
     claim = relAnchor >= 0
@@ -145,8 +148,8 @@ function deriveMarketEvent(pack = {}) {
     score,
     confidence,
     stance,
-    // Every valid market pack remains publishable. qualityGatePassed is kept as
-    // a non-blocking signal for editorial choices, observability and images.
+    // Candidate metadata only. Live permission is resolved separately by
+    // publicationPolicy using settings, freshness and publication history.
     publishable: true,
     qualityGatePassed,
     imageEligible: Boolean(imageType) && score >= 42,

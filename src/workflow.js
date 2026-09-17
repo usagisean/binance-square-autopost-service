@@ -4,6 +4,7 @@ const { publishToBinanceSquare, SQUARE_UPLOAD_DAILY_LIMIT } = require('./publish
 const { sendTelegram } = require('./telegram');
 const { appendRun, getSettings, saveSettings, getCounter, incrementCounter, listRuns } = require('./store');
 const { selectImagePaths } = require('./imageAssets');
+const { publicationPolicy } = require('./publicationPolicy');
 
 function hasBannedSymbol(pack, settings) {
   const banned = new Set((settings.bannedSymbols || []).map(s => String(s).toUpperCase()));
@@ -156,16 +157,27 @@ async function runOnceUnlocked(mode = 'dry-run', meta = {}) {
     const banned = hasBannedSymbol(pack, settings);
     if (banned) throw new Error(`banned_symbol_in_trio:${banned}`);
 
-    // A valid live market pack must continue to content generation. The score is
-    // editorial metadata and an image-evidence threshold, not a post-volume gate.
-    // Previously this branch skipped roughly half of the scheduled runs whenever
-    // the market was quiet, which made the configured daily quota unreachable.
-    const minPublishScore = Number(settings.minPublishScore ?? 42);
+    const minPublishScore = Number(settings.minPublishScore ?? 58);
     const qualityReference = {
       score: Number(pack.publishScore || 0),
       threshold: minPublishScore,
       belowReference: Number(pack.publishScore || 0) < minPublishScore
     };
+
+    const publishPolicy = publicationPolicy(pack, settings, listRuns(200));
+    const marketSnapshot = { price: pack.trio.lead.price, change1h: pack.trio.lead.change1h };
+    // Preview remains available for inspecting weak evidence. Live runs skip
+    // before calling a paid LLM, generating media, or consuming publish quota.
+    if (mode === 'publish' && settings.publishMode === 'live' && !publishPolicy.allowed) {
+      return appendRun({
+        mode, status: 'skipped', durationMs: Date.now() - startedAt,
+        source: pack.source, lead: pack.trio.lead.symbol,
+        peer: pack.trio.peer.symbol, anchor: pack.trio.anchor.symbol,
+        skipReason: publishPolicy.reason, publishPolicy, marketSnapshot,
+        publishScore: pack.publishScore, marketEvent: pack.marketEvent,
+        contentEvidence: pack.contentEvidence, qualityReference, meta
+      });
+    }
 
     generated = await generatePost(pack);
     const livePublish = mode === 'publish' && settings.publishMode === 'live';
@@ -186,6 +198,7 @@ async function runOnceUnlocked(mode = 'dry-run', meta = {}) {
         editorial: generated.editorial,
         media: { enabled: settings.enableImagePosts === true, ...media },
         publishScore: pack.publishScore, marketEvent: pack.marketEvent, qualityReference,
+        publishPolicy, marketSnapshot, contentEvidence: pack.contentEvidence,
         facts: pack.facts, takeaways: pack.takeaways, meta
       });
     }
@@ -204,6 +217,7 @@ async function runOnceUnlocked(mode = 'dry-run', meta = {}) {
       editorial: generated.editorial,
       media: { enabled: settings.enableImagePosts === true, ...media, images: published.images || [], uploadCount: published.uploadCount || 0 },
       publishScore: pack.publishScore, marketEvent: pack.marketEvent, qualityReference,
+      publishPolicy, marketSnapshot, contentEvidence: pack.contentEvidence,
       counter: { date: nextCounter.date, count: nextCounter.count, remaining: Math.max(0, Number(settings.maxDailyPosts || 50) - nextCounter.count) },
       facts: pack.facts, takeaways: pack.takeaways, meta
     });
@@ -222,7 +236,7 @@ async function runOnceUnlocked(mode = 'dry-run', meta = {}) {
     });
     const failLimit = Number(settings.maxConsecutiveFailures || 0);
     if (failLimit > 0 && mode !== 'dry-run') {
-      const recentLive = listRuns(Math.max(20, failLimit * 3)).filter(r => r.mode !== 'dry-run' && r.status !== 'preview').slice(0, failLimit);
+      const recentLive = listRuns(Math.max(20, failLimit * 3)).filter(r => r.mode !== 'dry-run' && ['published', 'error'].includes(r.status)).slice(0, failLimit);
       if (recentLive.length >= failLimit && recentLive.every(r => r.status === 'error')) {
         saveSettings({ enabled: false });
         if (settings.notifyTelegram) {

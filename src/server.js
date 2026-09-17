@@ -11,6 +11,7 @@ const { publisherStatus } = require('./publisher');
 const { getJson } = require('./httpClient');
 const { callOpenAIWithCandidate, effectiveMaxTokens } = require('./generator');
 const { sendTelegram } = require('./telegram');
+const { STRATEGY_VERSION } = require('./editorialStrategy');
 const { listImageAssets, saveImageAsset, deleteImageAsset, assetPath, contentTypeFor, MAX_IMAGE_BYTES } = require('./imageAssets');
 
 initStore();
@@ -423,7 +424,14 @@ function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   try {
-    if (url.pathname === '/health') return sendJson(res, 200, { ok: true, time: new Date().toISOString() });
+    if (url.pathname === '/health') {
+      const settings = getSettings();
+      return sendJson(res, 200, {
+        ok: true, time: new Date().toISOString(), revision: process.env.APP_REVISION || 'unknown',
+        editorial: { version: STRATEGY_VERSION, qualityGateEnabled: settings.enableQualityGate !== false,
+          minPublishScore: settings.minPublishScore, requireTrioCashtags: settings.requireTrioCashtags === true }
+      });
+    }
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
     return serveStatic(req, res, url);
   } catch (err) {

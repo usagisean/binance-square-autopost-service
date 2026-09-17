@@ -1,4 +1,5 @@
-const STRATEGY_VERSION = 3;
+const { finite } = require('./contentEvidence');
+const STRATEGY_VERSION = 4;
 
 function n(value, fallback = 0) {
   const parsed = Number(value);
@@ -18,11 +19,11 @@ function evidenceFamilies(pack = {}) {
   const coinglass = pack.coinglass || {};
   const families = [];
 
-  if ([lead.change1h, lead.change4h, lead.change24h].some(value => Number.isFinite(Number(value)))) families.push('price_action');
+  if ([lead.change1h, lead.change4h, lead.change24h].some(finite)) families.push('price_action');
   if (n(lead.volume24h) > 0) families.push('liquidity');
   if (Array.isArray(pack.chart?.klines) && pack.chart.klines.length >= 20) families.push('structure');
   if (intel.depth?.available === true) families.push('orderbook');
-  if ([intel.fundingRate, intel.openInterestValueChange5m, intel.takerBuySellRatio].some(value => Number.isFinite(Number(value)))) families.push('binance_derivatives');
+  if ([intel.fundingRate, intel.openInterestValueChange5m, intel.takerBuySellRatio].some(finite)) families.push('binance_derivatives');
   if ([coinglass.heatmap, coinglass.liquidation, coinglass.openInterest, coinglass.longShort, coinglass.orderbookAskBids].some(value => value?.available === true)) families.push('coinglass');
   if (pack.publicDerivatives?.ok === true && pack.publicDerivatives?.symbols?.[lead.symbol]) families.push('public_derivatives');
   if (pack.tradfi?.ok === true) families.push('cross_market');
@@ -95,14 +96,14 @@ const OPENING_MODES = {
     ['signal_payoff_first', '先说清这笔机会的赔率来自哪里，再给条件方案；禁止用夸张收益承诺。']
   ],
   A: [
-    ['tradeable_edge', '第一句直接回答主角为什么比另外两个更有可交易性，随后只保留一个会放大机会的位置。'],
+    ['tradeable_edge', '第一句解释主角最异常的变化及其含义；有相关参照才比较，不要强行判定谁更值得交易。'],
     ['payoff_gap', '从“市场正在低估哪一项变化”切入，让读者先看到潜在空间，再给反证。'],
-    ['leader_choice', '像交易员在自选列表里做取舍：先说为什么只把主角留在交易页，再用两条证据证明。']
+    ['leader_choice', '先指出一个容易被涨跌幅掩盖的矛盾，再用两条事实说明；不写自选列表或交易页套话。']
   ],
   B: [
-    ['one_level', '第一句给结论，全文只保留一个真正改变判断的位置；不硬凑止损和止盈。'],
+    ['one_level', '第一句给结论；有可靠区间才引用一个位置并解释来源，没有就只说明可验证的变化。'],
     ['tape_read', '从刚发生的价格或成交变化切入，先说它意味着什么，再用一个参照验证。'],
-    ['relative_choice', '直接回答三者里为什么只值得研究主角；另外两个币压缩在一句里。'],
+    ['relative_choice', '有明显强弱差才用一个相关参照解释主角；不强制三币比较，不写参照价值低。'],
     ['evidence_first', '用最反常的一条证据开场，第二句再落到偏向；不要先报完整涨跌幅。']
   ],
   C: [
@@ -176,10 +177,10 @@ function archetypeInstruction(archetype) {
     positioning_wait: '说明杠杆仓位已经在场、价格却没走开意味着什么；不要猜没有数据支持的方向。',
     cross_market_check: '传统市场只作一条交叉验证，主角始终是加密货币；相关性不能写成因果。',
     momentum_change: '聚焦旧方向为什么掉速，以及短周期是否已经改变交易倾向。',
-    participation_confirmed: '解释这次变化为什么有真实成交参与，而不是只强调涨跌幅。',
+    participation_confirmed: '区分过去一天的成交规模和最近已收盘短周期量能；只有量比证据才允许说成交正在增加。',
     active_but_balanced: '讲清成交活跃却没有方向这层矛盾，结论应是分歧而不是硬猜突破方向。',
     liquidity_test: '盘口只允许作一句旁证，主判断必须来自价格、成交或结构。',
-    late_move: '行情已经走了一段，重点判断新增参与是否继续，而不是复述涨幅。',
+    late_move: '行情已经走了一段，聚焦日内与短周期的差异；没有短周期量比，不推断新增资金。',
     sector_rotation: '说明同板块注意力如何迁移以及主角为何胜出或掉队，不平均介绍三个币。',
     relative_choice: '只使用一次相对强弱比较，回答主角是否真的优于同组和大盘。',
     no_clear_edge: '没有清晰优势也要提供价值：明确缺的是成交、结构还是方向一致性，并说什么变化值得重新看。'
@@ -197,10 +198,10 @@ function executionInstruction(grade, pack = {}, requiresTradeCard = false) {
     ].join('');
   }
   if (grade === 'A') {
-    return '证据质量达到 A 级，但本轮不是明确方向帖：写清机会为何值得打开交易页跟踪，只保留一个决定赔率的位置；禁止出现“做多、做空、止损、止盈”。';
+    return '证据质量达到 A 级，但本轮不是明确方向帖：解释两类证据为何支持同一判断，给出具体反证；价位可省略，禁止出现“做多、做空、止损、止盈”。';
   }
   if (grade === 'B') {
-    return '这是 B 级机会：可以明确偏向，但只给一个关键位置，重点回答为什么它比参照币更值得交易者停留；禁止出现“做多、做空、止损、止盈”。';
+    return '这是 B 级判断：可以明确偏向，但只给一个关键事实及其局限；不强制价位或三币比较，禁止出现“做多、做空、止损、止盈”。';
   }
   return '这是 C 级市场判断：不提供伪精确交易指令；指出最容易误读的地方，并告诉读者哪项变化出现后才会产生可交易性。';
 }
@@ -211,12 +212,12 @@ function readerPromise(archetype, leadSymbol = '主角') {
     positioning_divergence: `揭示 ${leadSymbol} 的价格与仓位为什么不同步，避免只看涨跌幅做错方向。`,
     crowding_risk: `指出 ${leadSymbol} 哪一侧已经拥挤，以及什么价格变化可能触发挤压。`,
     funding_pressure: `说明持仓成本正在压迫哪一侧，并判断价格是否已经开始兑现。`,
-    participation_confirmed: `证明 ${leadSymbol} 的变化有真实成交参与，让读者知道它为什么比参照币更值得盯。`,
+    participation_confirmed: `让读者区分 ${leadSymbol} 的日内成交规模与已收盘短周期量能，避免错误归因。`,
     sector_rotation: `说明注意力正在从哪里切向 ${leadSymbol}，以及这次轮动有没有延续条件。`,
-    relative_choice: `替读者完成一次交易标的筛选：为什么 ${leadSymbol} 比同组与大盘参照更值得留在交易页。`,
+    relative_choice: `说明 ${leadSymbol} 与相关参照的强弱差，并明确差异是否足够显著。`,
     no_clear_edge: `指出 ${leadSymbol} 当前缺少的关键证据，避免把噪声当机会，同时给出重新评估的开关。`
   };
-  return promises[archetype] || `让读者在最短时间内明白 ${leadSymbol} 为什么值得或不值得投入交易注意力。`;
+  return promises[archetype] || `让读者理解 ${leadSymbol} 最异常的一项变化、证据局限和具体反证。`;
 }
 
 function buildEditorialDecision(pack = {}, settings = {}, recentRuns = []) {
@@ -243,7 +244,7 @@ function buildEditorialDecision(pack = {}, settings = {}, recentRuns = []) {
     strictMode,
     thesis: event.claim || `${pack.trio?.lead?.symbol || '主角'} 当前只有一项值得讨论的变化`,
     readerPromise: readerPromise(archetype, pack.trio?.lead?.symbol || '主角'),
-    conversionInstruction: '目标不是喊单，而是让读者读完后清楚“为什么现在值得打开这个币的交易页、要盯哪项变化、什么情况会推翻判断”。靠信息差和赔率吸引点击，不用空洞号召或收益承诺。',
+    conversionInstruction: '目标是提供可核对、与前帖不同的信息：发生了什么、哪些证据支持解释、什么事实会推翻解释。不把打开交易页或交易价值上升写进正文，不用收益承诺。',
     evidenceFamilies: evidenceFamilies(pack),
     openingInstruction: opening.instruction,
     archetypeInstruction: archetypeInstruction(archetype),
@@ -251,10 +252,10 @@ function buildEditorialDecision(pack = {}, settings = {}, recentRuns = []) {
     structureInstruction: requiresTradeCard
       ? '采用“方向与条件 → 两条证据 → 反证”结构，但必须写成自然段，不显示小标题。'
       : grade === 'A'
-        ? '采用“可交易性判断 → 两条证据 → 一个赔率开关”结构，不能写成完整信号卡。'
+        ? '解释一个变化和两条证据，最后说明一项具体反证；不强制固定语序或价位。'
       : grade === 'B'
-        ? '采用“标的取舍 → 最强证据 → 一个值得继续盯的位置”结构，参照币只出现一次。'
-        : '采用“常见误读 → 数据矛盾 → 产生可交易性的开关”结构，不要伪装成信号单。'
+        ? '从最强事实解释一个矛盾，给出有信息量的结论；参照和价位均按需使用。'
+        : '说明一个常见误读和证据局限，不要硬凑机会、价位或信号单。'
   };
 }
 
