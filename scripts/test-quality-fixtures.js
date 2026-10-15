@@ -55,15 +55,16 @@ assert(!evidenceFamilies(packFor({ marketIntel: { symbols: { ONE: { fundingRate:
 assert(evidenceFocus(packFor({ marketEvent: { type: 'funding_dislocation' }, publicDerivatives: { symbols: { ONE: { fundingRateHourly: 0.00004 } } } })).includes('+0.0040%'));
 assert(evidenceFocus(packFor({ marketEvent: { type: 'crowded_positioning' }, coinglass: { longShort: { longPercent: 65, shortPercent: 35 } } })).includes('多头 65.0%'));
 
-const settings = { enableQualityGate: true, minPublishScore: 58 };
+const settings = { enableQualityGate: true, minPublishScore: 38 };
 assert.equal(publicationPolicy(packFor(), settings, [], now).allowed, true);
-assert.equal(publicationPolicy(packFor({ publishScore: 47 }), settings, [], now).allowed, false);
-assert.equal(publicationPolicy(packFor({ marketEvent: { type: 'low_signal' } }), settings, [], now).allowed, false);
+assert.equal(publicationPolicy(packFor({ publishScore: 47 }), settings, [], now).allowed, true);
+assert.equal(publicationPolicy(packFor({ publishScore: 25, marketEvent: { type: 'low_signal', score: 25 }, trio: { ...packFor().trio, lead: { ...packFor().trio.lead, change1h: 0.1, change24h: 0.5 } } }), settings, [], now).allowed, false);
+assert.equal(publicationPolicy(packFor({ publishScore: 25, marketEvent: { type: 'relative_strength', score: 25 } }), settings, [], now).reason, 'aggressive_market_move');
 assert.equal(publicationPolicy(packFor({ cacheFallback: true }), settings, [], now).allowed, false);
 assert.equal(publicationPolicy(packFor({ cacheFallback: true }), { enableQualityGate: false }, [], now).allowed, true);
 const history = [{ id: 'prior', status: 'published', createdAt: new Date(now - step).toISOString(),
   lead: 'ONE', marketEvent: { type: 'late_momentum' }, marketSnapshot: { price: 0.0014, change1h: 7.64 } }];
-assert.equal(publicationPolicy(packFor(), settings, history, now).reason, 'same_subject_event_within_2h');
+assert.equal(publicationPolicy(packFor(), settings, history, now).reason, 'same_subject_event_within_45m');
 assert.equal(publicationPolicy(packFor({ trio: { ...packFor().trio, lead: { ...packFor().trio.lead, change1h: 9.2 } } }), settings, history, now).allowed, true);
 assert.equal(publicationPolicy(packFor({ trio: { ...packFor().trio, lead: { ...packFor().trio.lead, price: 0.00145 } } }), settings, history, now).allowed, true);
 assert.equal(publicationPolicy(packFor(), settings, [{ ...history[0], status: 'preview' }], now).allowed, true);
@@ -110,13 +111,13 @@ try {
   const store = module.exports; store.initStore(); store.initStore();
   assert.equal(store.getActivePrompt().id, 'custom', 'custom prompt remains active');
   assert.equal(store.listPrompts().filter(prompt => prompt.builtinVersion === 4).length, 1);
-  assert.equal(store.getSettings().enableQualityGate, true, 'v4 optimized preset enabled once');
-  assert.equal(store.getSettings().minPublishScore, 58);
+  assert.equal(store.getSettings().enableQualityGate, true, 'v5 aggressive preset enabled once');
+  assert.equal(store.getSettings().minPublishScore, 38);
   assert.equal(store.getSettings().requireTrioCashtags, false);
-  const originalSettings = JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v4/settings.json')));
+  const originalSettings = JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v5/settings.json')));
   assert.equal(originalSettings.enableQualityGate, false, 'pre-upgrade settings backed up');
   assert.equal(originalSettings.minPublishScore, 47);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v4/prompts.json')))[0].content, 'custom-content');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v5/prompts.json')))[0].content, 'custom-content');
   assert.equal(store.getSettings().maxActionablePostsDaily, 7);
   assert.equal(store.getSettings().tradePlanMode, 'trade_card');
   store.saveSettings({ enableQualityGate: true, requireTrioCashtags: false });
@@ -126,7 +127,7 @@ try {
   store.saveSettings({ enableQualityGate: false, minPublishScore: 50 }); store.initStore();
   assert.equal(store.getSettings().enableQualityGate, false, 'later explicit choices survive restart');
   assert.equal(store.getSettings().minPublishScore, 50);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v4/settings.json'))).minPublishScore, 47, 'backup not overwritten');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v5/settings.json'))).minPublishScore, 47, 'backup not overwritten');
   fs.writeFileSync(path.join(data, 'prompts.json'), JSON.stringify([{ ...custom, name: '默认短帖 Prompt', builtinVersion: 3 }]));
   store.initStore();
   assert.equal(store.getActivePrompt().builtinVersion, 4);
@@ -139,8 +140,8 @@ async function workflowTests() {
     '../src/store': null, '../src/marketPack': null, '../src/generator': null,
     '../src/publisher': null, '../src/telegram': { sendTelegram: async () => { throw new Error('unexpected notification'); } }
   };
-  let pack = packFor({ publishScore: 47 });
-  let settings = { publishMode: 'live', enableQualityGate: true, minPublishScore: 58,
+  let pack = packFor({ publishScore: 25, trio: { ...packFor().trio, lead: { ...packFor().trio.lead, change1h: 0.1, change24h: 0.5 } } });
+  let settings = { publishMode: 'live', enableQualityGate: true, minPublishScore: 38,
     maxDailyPosts: 50, notifyTelegram: false, enableImagePosts: false };
   let generated = 0, published = 0, incremented = 0, paused = 0, failGeneration = false;
   let rows = [];

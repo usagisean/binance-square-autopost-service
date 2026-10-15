@@ -141,7 +141,7 @@ jobs:
             if HEALTH_JSON="$(curl -fsS --connect-timeout 2 --max-time 5 "http://127.0.0.1:${HOST_PORT_VALUE}/health")"; then
               if printf '%s' "$HEALTH_JSON" | docker compose exec -T app node -e '
                 const h = JSON.parse(require("fs").readFileSync(0, "utf8"));
-                if (!h.ok || h.revision !== process.env.APP_REVISION || h.editorial?.version !== 4) process.exit(1);
+                if (!h.ok || h.revision !== process.env.APP_REVISION || h.editorial?.version !== 5) process.exit(1);
                 console.log(JSON.stringify(h));
               '; then
                 READY=true

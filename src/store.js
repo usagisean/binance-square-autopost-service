@@ -5,7 +5,7 @@ const { DATA_DIR, ROOT, config } = require('./config');
 const { DEFAULT_SQUARE_TAG_SYMBOLS, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 
 const BUILTIN_PROMPT_VERSION = 4;
-const EDITORIAL_STRATEGY_VERSION = 4;
+const EDITORIAL_STRATEGY_VERSION = 5;
 
 const paths = {
   settings: path.join(DATA_DIR, 'settings.json'),
@@ -49,9 +49,9 @@ const defaultSettings = {
   // opportunity through evidence and relative payoff, not a repetitive card.
   maxActionablePostsDaily: 3,
   explicitSignalCooldownRuns: 8,
-  // v4 applies this quality preset once; later UI choices remain persistent.
+  // v5 applies an aggressive quality preset once; later UI choices persist.
   enableQualityGate: true,
-  minPublishScore: 58,
+  minPublishScore: 38,
   minImageEvidenceScore: 42,
   bannedPhrases: DEFAULT_BANNED_PHRASES,
   includeTradePlan: true,
@@ -111,7 +111,7 @@ function initStore() {
     || !Array.isArray(previousPrompts)
     || !previousPrompts.some(p => Number(p.builtinVersion || 0) >= BUILTIN_PROMPT_VERSION);
   if (needsUpgrade && (fs.existsSync(paths.settings) || fs.existsSync(paths.prompts))) {
-    const backupDir = path.join(DATA_DIR, 'backups', 'editorial-v4');
+    const backupDir = path.join(DATA_DIR, 'backups', `editorial-v${EDITORIAL_STRATEGY_VERSION}`);
     fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
     for (const file of [paths.settings, paths.prompts]) {
       if (!fs.existsSync(file)) continue;
@@ -137,11 +137,9 @@ function initStore() {
         stored.explicitSignalCooldownRuns = Math.max(0, Math.min(50, Number(stored.explicitSignalCooldownRuns ?? defaultSettings.explicitSignalCooldownRuns)));
       }
       if (Number(stored.qualityPresetVersion || 0) < EDITORIAL_STRATEGY_VERSION) {
-        // Apply the requested optimized production preset once. The previous
-        // version forcibly persisted false, so retaining it disables this fix.
+        // Apply the requested aggressive production preset once.
         stored.enableQualityGate = true;
-        const threshold = Number(stored.minPublishScore);
-        stored.minPublishScore = Number.isFinite(threshold) ? Math.min(100, Math.max(58, threshold)) : 58;
+        stored.minPublishScore = 38;
         stored.requireTrioCashtags = false;
         stored.qualityPresetVersion = EDITORIAL_STRATEGY_VERSION;
       }

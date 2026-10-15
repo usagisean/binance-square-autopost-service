@@ -1,5 +1,5 @@
 const { finite } = require('./contentEvidence');
-const STRATEGY_VERSION = 4;
+const STRATEGY_VERSION = 5;
 
 function n(value, fallback = 0) {
   const parsed = Number(value);

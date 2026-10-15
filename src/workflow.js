@@ -157,7 +157,7 @@ async function runOnceUnlocked(mode = 'dry-run', meta = {}) {
     const banned = hasBannedSymbol(pack, settings);
     if (banned) throw new Error(`banned_symbol_in_trio:${banned}`);
 
-    const minPublishScore = Number(settings.minPublishScore ?? 58);
+    const minPublishScore = Number(settings.minPublishScore ?? 38);
     const qualityReference = {
       score: Number(pack.publishScore || 0),
       threshold: minPublishScore,
