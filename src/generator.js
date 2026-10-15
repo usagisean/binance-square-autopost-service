@@ -1100,6 +1100,8 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 15. ${selectEmojiStyle(pack).instruction} 全文最多 1 个；不要使用 🚀、🤑、💯。
 16. ${selectHumorStyle(pack).instruction} 全文最多一处轻幽默，不能拿止损止盈数字开玩笑。
 17. 第一段必须出现主角 ${cashtag(pack.trio?.lead?.symbol || '')}，且该 Cashtag 后保留半角空格。
+18. ${pack.tradeConfidence?.level ? `前 90 字明确写“${pack.tradeConfidence.direction || '偏多/偏空/不追'}”，不能只写模糊可能性。` : '不得自行抬高结论确定性。'}
+19. ${pack.tradfiSignal?.usable && pack.tradfiSignal?.relevant?.length ? `自然写入至少一个有效美股参照：${pack.tradfiSignal.relevant.map(row => row.symbol).join('/')}；代码不加 $ Cashtag。` : '美股数据不足，不写。'}
 
 原文：
 ${text}
