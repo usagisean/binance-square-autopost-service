@@ -1,5 +1,5 @@
 const { finite } = require('./contentEvidence');
-const STRATEGY_VERSION = 5;
+const STRATEGY_VERSION = 6;
 
 function n(value, fallback = 0) {
   const parsed = Number(value);
@@ -26,7 +26,7 @@ function evidenceFamilies(pack = {}) {
   if ([intel.fundingRate, intel.openInterestValueChange5m, intel.takerBuySellRatio].some(finite)) families.push('binance_derivatives');
   if ([coinglass.heatmap, coinglass.liquidation, coinglass.openInterest, coinglass.longShort, coinglass.orderbookAskBids].some(value => value?.available === true)) families.push('coinglass');
   if (pack.publicDerivatives?.ok === true && pack.publicDerivatives?.symbols?.[lead.symbol]) families.push('public_derivatives');
-  if (pack.tradfi?.ok === true) families.push('cross_market');
+  if (pack.tradfiSignal ? pack.tradfiSignal.usable === true : pack.tradfi?.ok === true) families.push('cross_market');
   if (Array.isArray(pack.externalIntel?.newsItems) && pack.externalIntel.newsItems.length) families.push('verified_news');
 
   return [...new Set(families)];
@@ -175,7 +175,7 @@ function archetypeInstruction(archetype) {
     crowding_risk: '说明哪一侧更拥挤、价格怎样才会触发挤压；不要把多空比当成单独入场信号。',
     funding_pressure: '说明哪一侧在持续付资金成本，以及价格是否验证这份拥挤。',
     positioning_wait: '说明杠杆仓位已经在场、价格却没走开意味着什么；不要猜没有数据支持的方向。',
-    cross_market_check: '传统市场只作一条交叉验证，主角始终是加密货币；相关性不能写成因果。',
+    cross_market_check: '用最相关的美股/ETF做一条独立交叉验证：同向时增强结论，背离时必须写成反证；相关性不能写成因果。',
     momentum_change: '聚焦旧方向为什么掉速，以及短周期是否已经改变交易倾向。',
     participation_confirmed: '区分过去一天的成交规模和最近已收盘短周期量能；只有量比证据才允许说成交正在增加。',
     active_but_balanced: '讲清成交活跃却没有方向这层矛盾，结论应是分歧而不是硬猜突破方向。',
@@ -244,7 +244,7 @@ function buildEditorialDecision(pack = {}, settings = {}, recentRuns = []) {
     strictMode,
     thesis: event.claim || `${pack.trio?.lead?.symbol || '主角'} 当前只有一项值得讨论的变化`,
     readerPromise: readerPromise(archetype, pack.trio?.lead?.symbol || '主角'),
-    conversionInstruction: '目标是提供可核对、与前帖不同的信息：发生了什么、哪些证据支持解释、什么事实会推翻解释。不把打开交易页或交易价值上升写进正文，不用收益承诺。',
+    conversionInstruction: '目标是建立“可核对的决策信心”：先明确偏多、偏空或不追，再给独立证据和推翻条件。不用喊单、绝对化用语或收益承诺制造信心。',
     evidenceFamilies: evidenceFamilies(pack),
     openingInstruction: opening.instruction,
     archetypeInstruction: archetypeInstruction(archetype),

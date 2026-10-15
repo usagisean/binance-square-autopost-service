@@ -4,6 +4,8 @@ const { getSettings, getActivePrompt, getSecrets, getLlmCandidates, listRuns } =
 const { ASSET_UNIVERSE, CONTRACT_META, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 const { buildEditorialDecision, STRATEGY_VERSION } = require('./editorialStrategy');
 const { contentEvidenceInstruction } = require('./contentEvidence');
+const { PLAIN_SYMBOLS } = require('./tradfi');
+const { confidenceBrief } = require('./tradeConfidence');
 
 function cashtag(symbol) { return `$${String(symbol || '').replace(/^\$/, '').toUpperCase()}`; }
 function compactText(text) {
@@ -22,7 +24,7 @@ function collectCashtagSymbols(pack = {}, settings = getSettings()) {
     if (value && typeof value === 'object' && !Array.isArray(value)) Object.keys(value).forEach(add);
   };
 
-  Object.values(ASSET_UNIVERSE).flat().forEach(add);
+  [...ASSET_UNIVERSE.crypto_core, ...ASSET_UNIVERSE.crypto_ai, ...ASSET_UNIVERSE.crypto_high_volatility].forEach(add);
   Object.keys(CONTRACT_META).forEach(add);
   (settings.squareTagSymbols || []).forEach(add);
   [pack.trio?.lead?.symbol, pack.trio?.peer?.symbol, pack.trio?.anchor?.symbol, pack.tradePlan?.symbol, pack.marketEvent?.subject].forEach(add);
@@ -30,10 +32,6 @@ function collectCashtagSymbols(pack = {}, settings = getSettings()) {
   addKeys(pack.publicDerivatives?.symbols);
   addKeys(pack.crypto_core);
   addKeys(pack.crypto_ai);
-  addKeys(pack.tradfi?.assets);
-  addKeys(pack.stocks?.ai);
-  addKeys(pack.stocks?.crypto_beta);
-  addKeys(pack.stocks?.etf_macro);
 
   return [...symbols].sort((a, b) => b.length - a.length || a.localeCompare(b));
 }
@@ -45,7 +43,16 @@ function normalizeCashtags(text, pack = {}, settings = getSettings()) {
     pack.trio?.anchor?.symbol
   ].map(s => String(s || '').toUpperCase()).filter(Boolean));
 
+  // US equities and ETFs are context, not Binance token links. Keep them as
+  // plain ticker codes (for example 英伟达(NVDA)) unless a same-named asset
+  // is actually one of this run's selected crypto symbols.
+  for (const symbol of PLAIN_SYMBOLS) {
+    if (trioSymbols.has(symbol)) continue;
+    normalized = normalized.replace(new RegExp(`\\$${escapeRegExp(symbol)}(?=$|[^A-Z0-9])`, 'gi'), symbol);
+  }
+
   for (const symbol of collectCashtagSymbols(pack, settings)) {
+    if (PLAIN_SYMBOLS.has(symbol) && !trioSymbols.has(symbol)) continue;
     // “AI” is commonly used as a category name. Only treat it as the Sleepless
     // AI ticker when it is one of this run's selected assets; otherwise phrases
     // such as “AI 板块” must remain normal prose.
@@ -196,6 +203,8 @@ function promptSafeMarketPack(pack = {}) {
     publicDerivatives: { ok: pack.publicDerivatives?.ok === true, source: pack.publicDerivatives?.source || null, symbols: derivatives },
     coinglass: { ok: pack.coinglass?.ok === true, source: pack.coinglass?.source || null, pair: pack.coinglass?.pair || null, ...compactCoinglass },
     tradfi: pack.tradfi?.ok === true ? { ok: true, source: pack.tradfi.source, assets: pack.tradfi.assets } : { ok: false },
+    tradfiSignal: pack.tradfiSignal || null,
+    tradeConfidence: pack.tradeConfidence || null,
     sector: pack.sector || {},
     externalIntel: safeExternalIntel(pack)
   };
@@ -489,11 +498,13 @@ function editorialBrief(pack = {}, settings = getSettings()) {
   const emojiStyle = selectEmojiStyle(pack);
   const humorStyle = selectHumorStyle(pack);
   return [
-    '策略版本：evidence-editor-v4。它优先于旧 Prompt 中要求每帖都写三币比较、价位开关或“做多/做空+止损止盈”的规则。',
+    '策略版本：evidence-editor-v6。它优先于旧 Prompt 中要求每帖都写三币比较、价位开关或“做多/做空+止损止盈”的规则。',
     `本轮等级：${decision.setupGrade}；类型：${decision.archetype}；倾向：${decision.stance}`,
     `唯一论点：${decision.thesis}`,
     `读者收获：${decision.readerPromise}`,
     `点击价值：${decision.conversionInstruction}`,
+    `交易信心结构：${confidenceBrief(pack.tradeConfidence) || '本轮未生成信心结构，不得自行提高确定性。'}`,
+    `美股联动：${pack.tradfiSignal?.usable ? `${pack.stockFacts} ${pack.stockTakeaways}` : '数据不足，不得硬写美股。'}`,
     `事件处理：${decision.archetypeInstruction}`,
     `开场方式：${decision.openingInstruction}`,
     `执行尺度：${decision.executionInstruction}`,
@@ -557,6 +568,8 @@ function renderTemplate(template, pack, settings = getSettings()) {
     TRADE_CARD: executionGuide(decision, pack.tradePlan, pack),
     EXECUTION_GUIDE: executionGuide(decision, pack.tradePlan, pack),
     TRADE_PLAN_JSON: pack.tradePlan ? JSON.stringify(pack.tradePlan, null, 2) : '',
+    TRADE_CONFIDENCE: confidenceBrief(pack.tradeConfidence),
+    TRADFI_CONTEXT: pack.tradfiSignal?.usable ? `${pack.stockFacts}\n${pack.stockTakeaways}` : '',
     EDITORIAL_DECISION_JSON: JSON.stringify(decision, null, 2),
     SETUP_GRADE: decision.setupGrade,
     CONTENT_ARCHETYPE: decision.archetype,
@@ -1037,6 +1050,12 @@ function validatePostText(text, pack, settings = getSettings()) {
   const firstSentence = clean.split(/[。！？]/)[0] || '';
   const leadSymbol = String(pack.trio?.lead?.symbol || '').toUpperCase();
   if (leadSymbol && !firstSentence.toUpperCase().includes(leadSymbol)) errors.push('lead_missing_from_opening');
+  const opening90 = [...clean].slice(0, 90).join('');
+  if (pack.tradeConfidence?.level && !/(偏多|偏空|不追|暂不追|中性|做多|做空)/.test(opening90)) errors.push('missing_confidence_stance_in_opening');
+  if (pack.tradfiSignal?.usable === true && Array.isArray(pack.tradfiSignal.relevant) && pack.tradfiSignal.relevant.length) {
+    const mentionsTradfi = pack.tradfiSignal.relevant.some(row => new RegExp(`(^|[^A-Z0-9])${escapeRegExp(row.symbol)}(?=$|[^A-Z0-9])`, 'i').test(clean));
+    if (!mentionsTradfi) errors.push('missing_tradfi_reference');
+  }
   if (!tradeCardMode && (/^\s*(这轮|这笔|这单|现在|盘中|我这边只盯|多数人|真正该看的是)/.test(clean))) errors.push('formulaic_opening');
   const sim = maxRecentSimilarity(clean, settings);
   if (sim >= Number(settings.similarityThreshold || 0.72)) errors.push(`too_similar:${sim.toFixed(2)}`);
@@ -1123,9 +1142,9 @@ async function generatePost(pack) {
   const basePrompt = renderTemplate(prompt.content, pack, settings);
   const hasEditorialBrief = /\{\{\s*EDITORIAL_BRIEF\s*\}\}/.test(prompt.content || '');
   const runtimeEditorial = hasEditorialBrief
-    ? '上方已经包含本轮 evidence-editor-v4 编辑决策，不要重复解读或另起一套结构。'
+    ? '上方已经包含本轮 evidence-editor-v6 编辑决策，不要重复解读或另起一套结构。'
     : editorialBrief(pack, settings);
-  const renderedPrompt = `${basePrompt}\n\n【当前运行策略：优先级最高】\n以 evidence-editor-v4 为准：不强制三币比较、价位或固定结尾，不写“赔率开关、交易价值明显上升、留在交易页”。只有 editorial.requiresTradeCard=true 才允许出现“做多、做空、止损、止盈”。\n${runtimeEditorial}\n${cashtagInstruction(pack, settings)}\n${contentEvidenceInstruction(pack)}\n\n【运行时事实，不得照抄 JSON】\n近期过度使用、这次必须避开的词：${recentOverusedPhrases().map(x => x.phrase).join('、') || '无'}。\n结构化事件：\n${JSON.stringify(pack.marketEvent || {}, null, 2)}\n编辑决策：\n${JSON.stringify(editorial, null, 2)}`;
+  const renderedPrompt = `${basePrompt}\n\n【当前运行策略：优先级最高】\n以 evidence-editor-v6 为准：前 90 字明确给偏多、偏空或不追，用证据而不是喊单建立信心。不强制三币比较、价位或固定结尾。只有 editorial.requiresTradeCard=true 才允许出现“做多、做空、止损、止盈”。\n${runtimeEditorial}\n${cashtagInstruction(pack, settings)}\n${contentEvidenceInstruction(pack)}\n信心结构：${confidenceBrief(pack.tradeConfidence) || '无'}\n美股交叉验证：${pack.tradfiSignal?.usable ? `${pack.stockFacts} ${pack.stockTakeaways}` : '数据不足，不写。'}\n美股代码用普通文本括号，不加 $ Cashtag。\n\n【运行时事实，不得照抄 JSON】\n近期过度使用、这次必须避开的词：${recentOverusedPhrases().map(x => x.phrase).join('、') || '无'}。\n结构化事件：\n${JSON.stringify(pack.marketEvent || {}, null, 2)}\n编辑决策：\n${JSON.stringify(editorial, null, 2)}`;
   const provider = String(settings.llmProvider || config.llmProvider || 'mock').toLowerCase();
   if (provider === 'mock') {
     const text = mockGenerate(pack);

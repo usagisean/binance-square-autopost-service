@@ -4,6 +4,7 @@ const { fetchCoinglassForPack, buildCoinglassPromptLines } = require('./coinglas
 const { attachMarketQuality } = require('./marketQuality');
 const { fetchPublicDerivatives, appendPublicDerivativesFacts } = require('./publicDerivatives');
 const { fetchTradfiReferences, attachTradfi } = require('./tradfi');
+const { buildTradeConfidence } = require('./tradeConfidence');
 const {
   ASSET_UNIVERSE,
   CONTRACT_META,
@@ -889,6 +890,8 @@ async function finalizePack(pack) {
   const { buildContentEvidence } = require('./contentEvidence');
   structured.contentEvidence = buildContentEvidence(structured);
   attachTradfi(structured, await fetchTradfiReferences());
-  return attachMarketQuality(structured);
+  attachMarketQuality(structured);
+  structured.tradeConfidence = buildTradeConfidence(structured);
+  return structured;
 }
 module.exports = { buildMarketPack, buildTradePlan, fmt, usd, price, rankScore, discoverDynamicRows };

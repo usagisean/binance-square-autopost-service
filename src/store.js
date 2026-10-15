@@ -4,8 +4,9 @@ const crypto = require('crypto');
 const { DATA_DIR, ROOT, config } = require('./config');
 const { DEFAULT_SQUARE_TAG_SYMBOLS, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 
-const BUILTIN_PROMPT_VERSION = 4;
-const EDITORIAL_STRATEGY_VERSION = 5;
+const BUILTIN_PROMPT_VERSION = 6;
+const EDITORIAL_STRATEGY_VERSION = 6;
+const QUALITY_PRESET_VERSION = 5;
 
 const paths = {
   settings: path.join(DATA_DIR, 'settings.json'),
@@ -44,7 +45,7 @@ const defaultSettings = {
   maxConsecutiveFailures: 3,
   similarityThreshold: 0.72,
   editorialStrategyVersion: EDITORIAL_STRATEGY_VERSION,
-  qualityPresetVersion: EDITORIAL_STRATEGY_VERSION,
+  qualityPresetVersion: QUALITY_PRESET_VERSION,
   // Explicit “做多/做空 + 风险位” posts should be rare. Most posts sell the
   // opportunity through evidence and relative payoff, not a repetitive card.
   maxActionablePostsDaily: 3,
@@ -106,7 +107,7 @@ function writeJson(file, value) {
 function initStore() {
   const previousSettings = readJson(paths.settings, {});
   const previousPrompts = readJson(paths.prompts, []);
-  const needsUpgrade = Number(previousSettings.qualityPresetVersion || 0) < EDITORIAL_STRATEGY_VERSION
+  const needsUpgrade = Number(previousSettings.qualityPresetVersion || 0) < QUALITY_PRESET_VERSION
     || Number(previousSettings.editorialStrategyVersion || 0) < EDITORIAL_STRATEGY_VERSION
     || !Array.isArray(previousPrompts)
     || !previousPrompts.some(p => Number(p.builtinVersion || 0) >= BUILTIN_PROMPT_VERSION);
@@ -127,7 +128,7 @@ function initStore() {
   } else {
     const stored = readJson(paths.settings, {});
     if (Number(stored.editorialStrategyVersion || 0) < EDITORIAL_STRATEGY_VERSION
-      || Number(stored.qualityPresetVersion || 0) < EDITORIAL_STRATEGY_VERSION) {
+      || Number(stored.qualityPresetVersion || 0) < QUALITY_PRESET_VERSION) {
       // Only pre-v3 installations need the old signal-card migration. Do not
       // overwrite v3 users' explicit frequency/mode choices during v4 upgrade.
       if (Number(stored.editorialStrategyVersion || 0) < 3) {
@@ -136,12 +137,12 @@ function initStore() {
         stored.maxActionablePostsDaily = Math.max(0, Math.min(3, Number.isFinite(previousExplicitCap) ? previousExplicitCap : defaultSettings.maxActionablePostsDaily));
         stored.explicitSignalCooldownRuns = Math.max(0, Math.min(50, Number(stored.explicitSignalCooldownRuns ?? defaultSettings.explicitSignalCooldownRuns)));
       }
-      if (Number(stored.qualityPresetVersion || 0) < EDITORIAL_STRATEGY_VERSION) {
+      if (Number(stored.qualityPresetVersion || 0) < QUALITY_PRESET_VERSION) {
         // Apply the requested aggressive production preset once.
         stored.enableQualityGate = true;
         stored.minPublishScore = 38;
         stored.requireTrioCashtags = false;
-        stored.qualityPresetVersion = EDITORIAL_STRATEGY_VERSION;
+        stored.qualityPresetVersion = QUALITY_PRESET_VERSION;
       }
       stored.editorialStrategyVersion = EDITORIAL_STRATEGY_VERSION;
       stored.updatedAt = nowIso();

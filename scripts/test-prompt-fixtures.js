@@ -8,7 +8,8 @@ const { summarizeCoinglassEvidence, pairSymbol } = require('../src/coinglass');
 const { buildSvg, chooseEvidenceType } = require('../src/imageCard');
 const { deriveMarketEvent, attachMarketQuality } = require('../src/marketQuality');
 const { normalizeHyperliquid } = require('../src/publicDerivatives');
-const { parseChart } = require('../src/tradfi');
+const { parseChart, buildTradfiSignal, formatTradfiSignal } = require('../src/tradfi');
+const { buildTradeConfidence } = require('../src/tradeConfidence');
 const { buildTradePlan, rankScore, discoverDynamicRows } = require('../src/marketPack');
 const { buildEditorialDecision, setupGrade, explicitSignalPolicy } = require('../src/editorialStrategy');
 const { CONTENT_TYPES, buildPublishBody, parsePublishResponse } = require('../src/publisher');
@@ -200,7 +201,9 @@ function basePack(extra = {}) {
   assert(wrongDirection.errors.includes('trade_direction_mismatch:long'));
 
   const fourthTag = validatePostText(`${text} $NVDA 只作额外参照。`, pack, settings);
-  assert(fourthTag.errors.includes('too_many_distinct_cashtags:4'));
+  assert(!fourthTag.errors.some(error => error.includes('cashtag:NVDA')));
+  assert(fourthTag.text.includes('NVDA 只作额外参照'));
+  assert(!fourthTag.text.includes('$NVDA'));
 })();
 
 (function editorialGradesControlExecutionPrecision() {
@@ -232,7 +235,7 @@ function basePack(extra = {}) {
   assert.strictEqual(gradeC.setupGrade, 'C');
   assert.strictEqual(gradeC.requiresTradeCard, false);
   const rendered = renderTemplate(template, weak, settings);
-  assert(rendered.includes('evidence-editor-v4'));
+  assert(rendered.includes('evidence-editor-v6'));
   assert(rendered.includes('不提供伪精确交易指令'));
 })();
 
@@ -370,6 +373,45 @@ function basePack(extra = {}) {
   assert(event.reasons.some(x => x.reason === '传统市场与币圈方向互相验证'));
 })();
 
+(function tradfiSignalUsesRelevantStocksAndLabelsSessionBoundary() {
+  const pack = basePack();
+  const assets = {
+    QQQ: { symbol: 'QQQ', label: 'Nasdaq 100 ETF', change24h: 1.1, change1h: 0.2, marketState: 'REGULAR' },
+    SOXX: { symbol: 'SOXX', label: 'Semiconductor ETF', change24h: 1.6, change1h: 0.3, marketState: 'REGULAR' },
+    NVDA: { symbol: 'NVDA', label: 'NVIDIA', change24h: 2.2, change1h: 0.5, marketState: 'REGULAR' }
+  };
+  const signal = buildTradfiSignal(pack, { ok: true, source: 'fixture', assets });
+  assert.strictEqual(signal.relation, 'confirming');
+  assert(signal.relevant.some(x => x.symbol === 'NVDA'));
+  assert(formatTradfiSignal(signal).includes('英伟达(NVDA)'));
+  assert(!formatTradfiSignal(signal).includes('$NVDA'));
+})();
+
+(function confidenceIsEarnedByIndependentEvidence() {
+  const confidence = buildTradeConfidence(basePack({
+    contentEvidence: { available: true, volumeTrend: 'expanding' },
+    marketEvent: { type: 'cross_market_confirmation', score: 78, stance: 'bullish', comparisons: { relative1hVsAnchor: 2.75 }, evidenceAvailable: { publicDerivatives: true } },
+    tradfiSignal: { usable: true, relation: 'confirming' }
+  }));
+  assert.strictEqual(confidence.level, 'high');
+  assert.strictEqual(confidence.direction, '偏多');
+  const divergent = buildTradeConfidence(basePack({ marketEvent: { score: 64, stance: 'bullish', comparisons: {}, evidenceAvailable: {} }, tradfiSignal: { usable: true, relation: 'diverging' } }));
+  assert(divergent.contradictions.some(x => x.includes('背离')));
+})();
+
+(function confidenceAndTradfiMustReachThePublishedCopy() {
+  const pack = basePack({
+    tradeConfidence: { level: 'medium', direction: '偏多' },
+    tradfiSignal: { usable: true, relevant: [{ symbol: 'NVDA' }] }
+  });
+  const missing = validatePostText('$RENDER 短线强于大盘，但还要看成交。', pack, baseSettings({ minPostChars: 1, maxPostChars: 300, requireTrioCashtags: false }));
+  assert(missing.errors.includes('missing_confidence_stance_in_opening'));
+  assert(missing.errors.includes('missing_tradfi_reference'));
+  const present = validatePostText('$RENDER 结论偏多：短线强弱差已扩大，英伟达(NVDA)同向只作外部旁证。', pack, baseSettings({ minPostChars: 1, maxPostChars: 300, requireTrioCashtags: false }));
+  assert(!present.errors.includes('missing_confidence_stance_in_opening'));
+  assert(!present.errors.includes('missing_tradfi_reference'));
+})();
+
 (function realOrderbookCanBecomeEvidenceImage() {
   const levels = Array.from({ length: 10 }, (_, i) => ({ price: 7.1 + i * 0.01, qty: 100 + i * 10, notional: 710 + i * 90 }));
   const pack = basePack({
@@ -445,12 +487,13 @@ function basePack(extra = {}) {
   assert(rendered.includes('每个 Cashtag 后必须留一个半角空格'));
 })();
 
-(function everyMarketSymbolBecomesClickableCashtag() {
+(function cryptoSymbolsBecomeCashtagsButStocksRemainPlain() {
   const raw = '真正有变化的是 RENDER，FET 与 BTC 只作参照；美股 COIN、MSTR 和 QQQ 同时走强，AI 板块只能作背景。已有 $NVDA 不应重复加符号，价格 $7.25 也不能被改写。';
   const normalized = normalizeCashtags(raw, basePack(), baseSettings());
-  for (const symbol of ['RENDER', 'FET', 'BTC', 'COIN', 'MSTR', 'QQQ', 'NVDA']) {
+  for (const symbol of ['RENDER', 'FET', 'BTC']) {
     assert(new RegExp(`\\$${symbol}(?=\\s|$)`).test(normalized), `${symbol} should have a clickable cashtag boundary`);
   }
+  for (const symbol of ['COIN', 'MSTR', 'QQQ', 'NVDA']) assert(!normalized.includes(`$${symbol}`), `${symbol} must remain a plain US ticker`);
   assert(normalized.includes('AI 板块'));
   assert(!normalized.includes('$AI 板块'));
   assert(!normalized.includes('$$'));
@@ -480,8 +523,9 @@ function basePack(extra = {}) {
 (function validationReturnsNormalizedTextForPublisher() {
   const raw = '成交重新集中到 RENDER，FET 与 BTC 都没有同步放量；美股 COIN 和 QQQ 只作情绪参照，这次变化更像主角自己的量价选择。';
   const validation = validatePostText(raw, basePack(), baseSettings({ minPostChars: 1, maxPostChars: 300 }));
-  for (const symbol of ['RENDER', 'FET', 'BTC', 'COIN', 'QQQ']) assert(new RegExp(`\\$${symbol}(?=\\s|$)`).test(validation.text));
-  assert(!/(^|[^$A-Z0-9])(RENDER|FET|BTC|COIN|QQQ)(?=$|[^A-Z0-9])/.test(validation.text));
+  for (const symbol of ['RENDER', 'FET', 'BTC']) assert(new RegExp(`\\$${symbol}(?=\\s|$)`).test(validation.text));
+  for (const symbol of ['COIN', 'QQQ']) assert(!validation.text.includes(`$${symbol}`));
+  assert(!/(^|[^$A-Z0-9])(RENDER|FET|BTC)(?=$|[^A-Z0-9])/.test(validation.text));
 })();
 
 (function dynamicallySelectedSymbolAlsoBecomesCashtag() {

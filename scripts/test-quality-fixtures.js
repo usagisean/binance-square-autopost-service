@@ -110,14 +110,14 @@ try {
   });
   const store = module.exports; store.initStore(); store.initStore();
   assert.equal(store.getActivePrompt().id, 'custom', 'custom prompt remains active');
-  assert.equal(store.listPrompts().filter(prompt => prompt.builtinVersion === 4).length, 1);
+  assert.equal(store.listPrompts().filter(prompt => prompt.builtinVersion === 6).length, 1);
   assert.equal(store.getSettings().enableQualityGate, true, 'v5 aggressive preset enabled once');
   assert.equal(store.getSettings().minPublishScore, 38);
   assert.equal(store.getSettings().requireTrioCashtags, false);
-  const originalSettings = JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v5/settings.json')));
+  const originalSettings = JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v6/settings.json')));
   assert.equal(originalSettings.enableQualityGate, false, 'pre-upgrade settings backed up');
   assert.equal(originalSettings.minPublishScore, 47);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v5/prompts.json')))[0].content, 'custom-content');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v6/prompts.json')))[0].content, 'custom-content');
   assert.equal(store.getSettings().maxActionablePostsDaily, 7);
   assert.equal(store.getSettings().tradePlanMode, 'trade_card');
   store.saveSettings({ enableQualityGate: true, requireTrioCashtags: false });
@@ -127,10 +127,10 @@ try {
   store.saveSettings({ enableQualityGate: false, minPublishScore: 50 }); store.initStore();
   assert.equal(store.getSettings().enableQualityGate, false, 'later explicit choices survive restart');
   assert.equal(store.getSettings().minPublishScore, 50);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v5/settings.json'))).minPublishScore, 47, 'backup not overwritten');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'backups/editorial-v6/settings.json'))).minPublishScore, 47, 'backup not overwritten');
   fs.writeFileSync(path.join(data, 'prompts.json'), JSON.stringify([{ ...custom, name: '默认短帖 Prompt', builtinVersion: 3 }]));
   store.initStore();
-  assert.equal(store.getActivePrompt().builtinVersion, 4);
+  assert.equal(store.getActivePrompt().builtinVersion, 6);
   assert.equal(store.listPrompts().find(prompt => prompt.id === 'custom').content, 'custom-content', 'original prompt backed up');
 } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 

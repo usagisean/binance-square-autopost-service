@@ -17,7 +17,7 @@ function evidenceAvailable(pack = {}) {
     chart: Array.isArray(pack.chart?.klines) && pack.chart.klines.length >= 20,
     news: Array.isArray(pack.externalIntel?.newsItems) && pack.externalIntel.newsItems.length > 0,
     publicDerivatives: pack.publicDerivatives?.ok === true && Boolean(pack.publicDerivatives?.symbols?.[pack.trio?.lead?.symbol]),
-    tradfi: pack.tradfi?.ok === true
+    tradfi: pack.tradfiSignal ? pack.tradfiSignal.usable === true : pack.tradfi?.ok === true
   };
 }
 
@@ -65,9 +65,11 @@ function deriveMarketEvent(pack = {}) {
   if (available.publicDerivatives) add(6, '存在免费永续合约仓位证据');
   if (available.publicDerivatives && Math.abs(fundingHourlyPct) >= 0.003) add(clamp(Math.abs(fundingHourlyPct) * 1200, 4, 10), '资金费率偏离中性');
   if (available.publicDerivatives && oiToVolume >= 1.2) add(clamp(oiToVolume * 3, 4, 10), '持仓相对成交量偏高');
-  const crossMarketAligned = lead.bucket === 'ai'
-    ? Math.abs(growthMove) >= 0.7 && n(lead.change1h) * growthMove > 0
-    : ['BTC', 'ETH', 'SOL', 'BNB', 'COIN', 'MSTR'].includes(lead.symbol) && Math.abs(cryptoBetaMove) >= 1 && n(lead.change1h) * cryptoBetaMove > 0;
+  const crossMarketAligned = pack.tradfiSignal
+    ? pack.tradfiSignal.usable === true && pack.tradfiSignal.relation === 'confirming'
+    : lead.bucket === 'ai'
+      ? Math.abs(growthMove) >= 0.7 && n(lead.change1h) * growthMove > 0
+      : ['BTC', 'ETH', 'SOL', 'BNB', 'COIN', 'MSTR'].includes(lead.symbol) && Math.abs(cryptoBetaMove) >= 1 && n(lead.change1h) * cryptoBetaMove > 0;
   if (available.tradfi && crossMarketAligned) add(7, '传统市场与币圈方向互相验证');
   score = Math.round(clamp(score, 0, 100));
 
