@@ -338,7 +338,7 @@ function basePack(extra = {}) {
   assert.strictEqual(event.imageType, 'public_derivatives_panel');
   pack.marketEvent = event; pack.publishScore = event.score;
   assert.strictEqual(chooseEvidenceType(pack), 'public_derivatives_panel');
-  assert(buildSvg(pack).includes('DERIVATIVES SNAPSHOT'));
+  assert(buildSvg(pack).includes('资金费率 · 每小时'));
 })();
 
 (function positioningWithoutPriceIsAUsefulEvent() {
@@ -399,8 +399,9 @@ function basePack(extra = {}) {
   assert(divergent.contradictions.some(x => x.includes('背离')));
 })();
 
-(function confidenceAndTradfiMustReachThePublishedCopy() {
+(function confidenceAndRelevantTradfiMustReachThePublishedCopy() {
   const pack = basePack({
+    marketEvent: { type: 'cross_market_confirmation' },
     tradeConfidence: { level: 'medium', direction: '偏多' },
     tradfiSignal: { usable: true, relevant: [{ symbol: 'NVDA' }] }
   });
@@ -427,7 +428,7 @@ function basePack(extra = {}) {
   assert.strictEqual(pack.marketEvent.type, 'orderbook_imbalance');
   assert.strictEqual(pack.marketEvent.imageType, 'binance_orderbook_depth');
   assert.strictEqual(chooseEvidenceType(pack), 'binance_orderbook_depth');
-  assert(buildSvg(pack).includes('ORDERBOOK DEPTH'));
+  assert(buildSvg(pack).includes('可见挂单名义金额'));
 })();
 
 (function momentumOutranksRoutineOrderbookSnapshot() {

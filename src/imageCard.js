@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const { DATA_DIR } = require('./config');
+const { buildEvidenceStory, realChartRows } = require('./imageStory');
 
 const W = 1280;
 const H = 720;
@@ -88,17 +89,7 @@ function formatTime(ts) {
   return `${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 function chartRows(pack = {}) {
-  const rows = (pack.chart?.klines || []).slice(-80);
-  if (rows.length >= 20) return rows;
-  const lead = pack.trio?.lead || {};
-  const p = Number(lead.price || 1);
-  return Array.from({ length: 64 }, (_, i) => {
-    const drift = (i - 32) * p * 0.0007;
-    const wave = Math.sin(i / 5) * p * 0.01;
-    const open = p + drift + wave;
-    const close = open + Math.sin(i / 3) * p * 0.004;
-    return { open, high: Math.max(open, close) + p * 0.006, low: Math.min(open, close) - p * 0.006, close, volume: 1000 + i * 10, openTime: Date.now() - (64 - i) * 15 * 60 * 1000 };
-  });
+  return realChartRows(pack);
 }
 
 function hasCoinglassHeatmap(pack = {}) {
@@ -159,7 +150,7 @@ function buildBinanceOrderbookDepthSvg(pack = {}) {
   </svg>`;
 }
 
-function hasCrossMarketPanel(pack = {}) { return pack.tradfi?.ok === true && Object.keys(pack.tradfi?.assets || {}).length >= 5; }
+function hasCrossMarketPanel(pack = {}) { return pack.tradfiSignal?.usable === true && (pack.tradfiSignal.relevant || []).some(row => row.change24h != null && Number.isFinite(Number(row.change24h))); }
 function buildCrossMarketPanelSvg(pack = {}) {
   const lead = pack.trio?.lead || {};
   const assets = pack.tradfi?.assets || {};
@@ -421,29 +412,43 @@ function buildTradingScreenshotSvg(pack) {
 </svg>`;
 }
 
-function buildSvg(pack) {
-  if (hasCoinglassHeatmap(pack)) return buildCoinglassHeatmapSvg(pack);
-  if (hasCoinglassPanel(pack)) return buildCoinglassPanelSvg(pack);
-  if (pack.marketEvent?.imageType === 'binance_orderbook_depth' && hasBinanceOrderbookDepth(pack)) return buildBinanceOrderbookDepthSvg(pack);
-  if (pack.marketEvent?.imageType === 'cross_market_panel' && hasCrossMarketPanel(pack)) return buildCrossMarketPanelSvg(pack);
-  if (hasPublicDerivativesPanel(pack)) return buildPublicDerivativesPanelSvg(pack);
-  return buildTradingScreenshotSvg(pack);
+function buildSvg(pack, postText = '') {
+  const type = chooseEvidenceType(pack);
+  if (type === 'coinglass_liquidation_heatmap') return buildCoinglassHeatmapSvg(pack);
+  if (type === 'coinglass_derivatives_panel') return buildCoinglassPanelSvg(pack);
+  return type ? buildEvidenceStory(pack, postText, type) : null;
 }
 function chooseEvidenceType(pack = {}) {
+  if (pack.cacheFallback) return null;
+  const event = pack.marketEvent || {};
+  const hasChart = realChartRows(pack).length >= 20;
+  // Match the argument, not whichever provider happened to return first.
+  if (['momentum_shift', 'late_momentum', 'liquid_momentum', 'relative_strength', 'volume_without_direction', 'sector_rotation'].includes(event.type)) return hasChart ? 'chart_snapshot' : null;
+  if (event.type === 'cross_market_confirmation') return hasCrossMarketPanel(pack) ? 'cross_market_panel' : null;
+  if (event.type === 'orderbook_imbalance') return hasBinanceOrderbookDepth(pack) ? 'binance_orderbook_depth' : null;
+  const checks = {
+    coinglass_liquidation_heatmap: hasCoinglassHeatmap,
+    coinglass_derivatives_panel: hasCoinglassPanel,
+    binance_orderbook_depth: hasBinanceOrderbookDepth,
+    cross_market_panel: hasCrossMarketPanel,
+    public_derivatives_panel: hasPublicDerivativesPanel,
+    chart_snapshot: () => hasChart
+  };
+  if (event.imageType) return checks[event.imageType]?.(pack) ? event.imageType : null;
   if (hasCoinglassHeatmap(pack)) return 'coinglass_liquidation_heatmap';
   if (hasCoinglassPanel(pack)) return 'coinglass_derivatives_panel';
-  if (pack.marketEvent?.imageType === 'binance_orderbook_depth' && hasBinanceOrderbookDepth(pack)) return 'binance_orderbook_depth';
-  if (pack.marketEvent?.imageType === 'cross_market_panel' && hasCrossMarketPanel(pack)) return 'cross_market_panel';
   if (hasPublicDerivativesPanel(pack)) return 'public_derivatives_panel';
-  return 'chart_snapshot';
+  return hasChart ? 'chart_snapshot' : null;
 }
 async function generateMarketCard(pack, postText = '', options = {}) {
+  const svg = buildSvg(pack, postText);
+  if (!svg) return null;
   const dir = options.dir || path.join(DATA_DIR, 'generated-images');
   fs.mkdirSync(dir, { recursive: true });
   const lead = pack.trio?.lead?.symbol || 'MARKET';
   const ts = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
   const file = path.join(dir, `${ts}-${lead}-${chooseEvidenceType(pack)}.png`);
-  await sharp(Buffer.from(buildSvg(pack, postText, options))).png({ compressionLevel: 9 }).toFile(file);
+  await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toFile(file);
   return file;
 }
 

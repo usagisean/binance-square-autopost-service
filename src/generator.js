@@ -1,9 +1,11 @@
 const { postJson, request } = require('./httpClient');
-const { config } = require('./config');
+const fs = require('node:fs');
+const path = require('node:path');
+const { config, ROOT } = require('./config');
 const { getSettings, getActivePrompt, getSecrets, getLlmCandidates, listRuns } = require('./store');
 const { ASSET_UNIVERSE, CONTRACT_META, DEFAULT_BANNED_PHRASES } = require('./assetUniverse');
 const { buildEditorialDecision, STRATEGY_VERSION } = require('./editorialStrategy');
-const { contentEvidenceInstruction } = require('./contentEvidence');
+const { contentEvidenceInstruction, validateVolumeRatioText } = require('./contentEvidence');
 const { PLAIN_SYMBOLS } = require('./tradfi');
 const { confidenceBrief } = require('./tradeConfidence');
 
@@ -127,6 +129,12 @@ function evidenceFocus(pack = {}) {
   if (event.type === 'late_momentum') return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}，24h ${signedPct(lead.change24h)}，成交额 ${shortUsd(lead.volume24h)}。`;
   return `${lead.symbol} 最近 1h ${signedPct(lead.change1h)}、24h ${signedPct(lead.change24h)}，相对 ${anchor.symbol} 的 1h 差值为 ${signedPct(relAnchor)}。`;
 }
+function shouldReferenceTradfi(pack = {}) {
+  return pack.tradfiSignal?.usable === true
+    && Array.isArray(pack.tradfiSignal.relevant) && pack.tradfiSignal.relevant.length > 0
+    && pack.marketEvent?.type === 'cross_market_confirmation';
+}
+
 function optionalContext(pack = {}) {
   const unavailable = /暂无可用|数据缺失|数据不足|本轮不使用|不强行写/;
   const lines = [];
@@ -428,31 +436,7 @@ function executionGuide(decision = {}, tradePlan = null, pack = {}) {
 }
 
 function selectHumorStyle(pack = {}) {
-  const lead = pack.trio?.lead || {};
-  const event = pack.marketEvent || {};
-  const seed = `humor:${pack.generatedAt || ''}:${lead.symbol || ''}:${event.type || ''}`;
-  return seededPick([
-    {
-      id: 'none',
-      instruction: '本轮不强行搞笑，保持干净直接；连续发帖需要有些帖子完全不带笑点。'
-    },
-    {
-      id: 'dry_discipline',
-      instruction: '原因段允许半句克制冷幽默，笑点来自“行情很会诱惑人，但仓位纪律更重要”的反差；不要复用固定金句。'
-    },
-    {
-      id: 'data_deadpan',
-      instruction: '原因段允许一句淡淡吐槽，让涨幅表象与成交/盘口事实形成反差；不能把币或市场过度拟人化。'
-    },
-    {
-      id: 'desk_banter',
-      instruction: '像交易员和熟人聊天那样轻松一句，可以自嘲判断会错，但不能用网络烂梗、夸张比喻或喊单腔。'
-    },
-    {
-      id: 'none',
-      instruction: '本轮不强行搞笑，信息密度优先。'
-    }
-  ], seed);
+  return { id: 'none', instruction: '本轮不安排笑话或自嘲金句。自然表达判断就够了，不用“行情递糖、仓位看牙医”等装饰性比喻。' };
 }
 
 function recentPostBrief(settings = getSettings()) {
@@ -504,7 +488,7 @@ function editorialBrief(pack = {}, settings = getSettings()) {
     `读者收获：${decision.readerPromise}`,
     `点击价值：${decision.conversionInstruction}`,
     `交易信心结构：${confidenceBrief(pack.tradeConfidence) || '本轮未生成信心结构，不得自行提高确定性。'}`,
-    `美股联动：${pack.tradfiSignal?.usable ? `${pack.stockFacts} ${pack.stockTakeaways}` : '数据不足，不得硬写美股。'}`,
+    `美股联动：${shouldReferenceTradfi(pack) ? `${pack.stockFacts} ${pack.stockTakeaways}` : '不是本轮选题，不为凑指标插入美股；有数据不等于必须写。'}`,
     `事件处理：${decision.archetypeInstruction}`,
     `开场方式：${decision.openingInstruction}`,
     `执行尺度：${decision.executionInstruction}`,
@@ -569,7 +553,7 @@ function renderTemplate(template, pack, settings = getSettings()) {
     EXECUTION_GUIDE: executionGuide(decision, pack.tradePlan, pack),
     TRADE_PLAN_JSON: pack.tradePlan ? JSON.stringify(pack.tradePlan, null, 2) : '',
     TRADE_CONFIDENCE: confidenceBrief(pack.tradeConfidence),
-    TRADFI_CONTEXT: pack.tradfiSignal?.usable ? `${pack.stockFacts}\n${pack.stockTakeaways}` : '',
+    TRADFI_CONTEXT: shouldReferenceTradfi(pack) ? `${pack.stockFacts}\n${pack.stockTakeaways}` : '',
     EDITORIAL_DECISION_JSON: JSON.stringify(decision, null, 2),
     SETUP_GRADE: decision.setupGrade,
     CONTENT_ARCHETYPE: decision.archetype,
@@ -965,6 +949,7 @@ function validatePostText(text, pack, settings = getSettings()) {
   // preference. Normalize every known market symbol before any validation and
   // return this exact normalized text to the publisher.
   const clean = normalizeCashtags(compactText(text), pack, settings);
+  errors.push(...validateVolumeRatioText(clean, pack.contentEvidence));
   const len = [...clean].length;
   const configuredMin = Number(settings.minPostChars || 160);
   // Treat the configured minimum as an editorial target, with only a narrow
@@ -1052,7 +1037,7 @@ function validatePostText(text, pack, settings = getSettings()) {
   if (leadSymbol && !firstSentence.toUpperCase().includes(leadSymbol)) errors.push('lead_missing_from_opening');
   const opening90 = [...clean].slice(0, 90).join('');
   if (pack.tradeConfidence?.level && !/(偏多|偏空|不追|暂不追|中性|做多|做空)/.test(opening90)) errors.push('missing_confidence_stance_in_opening');
-  if (pack.tradfiSignal?.usable === true && Array.isArray(pack.tradfiSignal.relevant) && pack.tradfiSignal.relevant.length) {
+  if (shouldReferenceTradfi(pack)) {
     const mentionsTradfi = pack.tradfiSignal.relevant.some(row => new RegExp(`(^|[^A-Z0-9])${escapeRegExp(row.symbol)}(?=$|[^A-Z0-9])`, 'i').test(clean));
     if (!mentionsTradfi) errors.push('missing_tradfi_reference');
   }
@@ -1101,7 +1086,8 @@ function repairPromptForPost(text, validation, pack, settings = getSettings()) {
 16. ${selectHumorStyle(pack).instruction} 全文最多一处轻幽默，不能拿止损止盈数字开玩笑。
 17. 第一段必须出现主角 ${cashtag(pack.trio?.lead?.symbol || '')}，且该 Cashtag 后保留半角空格。
 18. ${pack.tradeConfidence?.level ? `前 90 字明确写“${pack.tradeConfidence.direction || '偏多/偏空/不追'}”，不能只写模糊可能性。` : '不得自行抬高结论确定性。'}
-19. ${pack.tradfiSignal?.usable && pack.tradfiSignal?.relevant?.length ? `自然写入至少一个有效美股参照：${pack.tradfiSignal.relevant.map(row => row.symbol).join('/')}；代码不加 $ Cashtag。` : '美股数据不足，不写。'}
+19. ${shouldReferenceTradfi(pack) ? `本轮主旨是跨市场比较，写入至少一个有效参照：${pack.tradfiSignal.relevant.map(row => row.symbol).join('/')}；代码不加 $ Cashtag。` : '本轮不是跨市场选题，不必写美股，不用为凑反证加入 MSTR/COIN。'}
+20. 只修复实际错误，不把内部校验要求改成正文；量比必须保留原始数量级，0.24 倍等于 24%，不是 0.24%。不要强加笑话或“判断错了也正常”。
 
 原文：
 ${text}
@@ -1136,17 +1122,38 @@ async function repairPostText(text, validation, pack, settings, candidate) {
   return { text: repairedText, validation: repairedValidation };
 }
 
+function renderGenerationPrompt(prompt, pack, settings = getSettings()) {
+  const editorial = resolveEditorialDecision(pack, settings);
+  const legacyCard = /本轮交易卡（最高优先级）|首句硬规则/.test(prompt.content || '');
+  // Normalize only the recognizable obsolete trade-card template, in memory.
+  // Preserve the stored original and all unrelated user-authored templates.
+  const template = legacyCard
+    ? fs.readFileSync(path.join(ROOT, 'templates/default-prompt.md'), 'utf8')
+    : String(prompt.content || '');
+  const basePrompt = renderTemplate(template, pack, settings);
+  const brief = /\{\{\s*EDITORIAL_BRIEF\s*\}\}/.test(template) ? '' : editorialBrief(pack, settings);
+  return [
+    '【本轮统一写作规则：优先于旧模板】',
+    '像在回答一个读者真正关心的问题：先点出具体变化或矛盾，再说判断。前90字让倾向可读，但不要每条都以“偏多看/偏空看”开头。',
+    editorial.requiresTradeCard
+      ? '本轮允许条件交易卡：前140字写清做多/做空、触发、止损、第一目标，数字不能改。'
+      : '本轮不是交易卡；不要出现做多、做空、止损、止盈，不要从旧模板补一套信号。',
+    shouldReferenceTradfi(pack)
+      ? '本轮讨论跨市场关系，保留最相关的一项美股参照，说明不同时间窗，不推断因果。'
+      : '本轮主旨不是美股，不为凑反证插入 MSTR/COIN。',
+    '没有真实仓位、交易记录或读者评论，就不能编造“我刚买了、昨天精准拿下、粉丝问我”。',
+    '内部限制不要逐项复述给读者。除交易卡必填价位外最多选两个核心数字；不安排笑话。不每篇强加提问；只有真实存在两种合理解读时，才可用一个具体问题收尾，禁止求赞互粉。',
+    brief, basePrompt,
+    `【仅供核对，不照抄】\n${JSON.stringify({ marketEvent: pack.marketEvent, editorial })}`
+  ].filter(Boolean).join('\n\n');
+}
+
 async function generatePost(pack) {
   const settings = getSettings();
   const prompt = getActivePrompt();
   if (!prompt) throw new Error('no_active_prompt');
   const editorial = resolveEditorialDecision(pack, settings);
-  const basePrompt = renderTemplate(prompt.content, pack, settings);
-  const hasEditorialBrief = /\{\{\s*EDITORIAL_BRIEF\s*\}\}/.test(prompt.content || '');
-  const runtimeEditorial = hasEditorialBrief
-    ? '上方已经包含本轮 evidence-editor-v6 编辑决策，不要重复解读或另起一套结构。'
-    : editorialBrief(pack, settings);
-  const renderedPrompt = `${basePrompt}\n\n【当前运行策略：优先级最高】\n以 evidence-editor-v6 为准：前 90 字明确给偏多、偏空或不追，用证据而不是喊单建立信心。不强制三币比较、价位或固定结尾。只有 editorial.requiresTradeCard=true 才允许出现“做多、做空、止损、止盈”。\n${runtimeEditorial}\n${cashtagInstruction(pack, settings)}\n${contentEvidenceInstruction(pack)}\n信心结构：${confidenceBrief(pack.tradeConfidence) || '无'}\n美股交叉验证：${pack.tradfiSignal?.usable ? `${pack.stockFacts} ${pack.stockTakeaways}` : '数据不足，不写。'}\n美股代码用普通文本括号，不加 $ Cashtag。\n\n【运行时事实，不得照抄 JSON】\n近期过度使用、这次必须避开的词：${recentOverusedPhrases().map(x => x.phrase).join('、') || '无'}。\n结构化事件：\n${JSON.stringify(pack.marketEvent || {}, null, 2)}\n编辑决策：\n${JSON.stringify(editorial, null, 2)}`;
+  const renderedPrompt = renderGenerationPrompt(prompt, pack, settings);
   const provider = String(settings.llmProvider || config.llmProvider || 'mock').toLowerCase();
   if (provider === 'mock') {
     const text = mockGenerate(pack);
@@ -1234,4 +1241,4 @@ async function generatePost(pack) {
   return { text: finalText, promptId: prompt.id, promptName: prompt.name, provider, channelId: 'legacy', channelName: 'Legacy settings', model: settings.openaiModel || config.openaiModel, renderedPrompt, editorial, attempts: attemptsLegacy };
 }
 
-module.exports = { maxRecentTemplateSimilarity, templateFingerprint, cashtagInstruction, generatePost, mockGenerate, validatePostText, renderTemplate, cashtag, normalizeCashtags, humanPriceLevel, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, selectHumorStyle, formatTradePlanForPrompt, tradeCardInstruction, executionGuide, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext, safeExternalIntel, promptSafeMarketPack, openingFingerprint, maxRecentOpeningSimilarity, resolveEditorialDecision };
+module.exports = { shouldReferenceTradfi, renderGenerationPrompt, maxRecentTemplateSimilarity, templateFingerprint, cashtagInstruction, generatePost, mockGenerate, validatePostText, renderTemplate, cashtag, normalizeCashtags, humanPriceLevel, callOpenAIWithCandidate, effectiveMaxTokens, selectPostAngle, selectStyleCard, selectEmojiStyle, selectHumorStyle, formatTradePlanForPrompt, tradeCardInstruction, executionGuide, effectiveBannedPhrases, recentOverusedPhrases, editorialBrief, evidenceFocus, optionalContext, safeExternalIntel, promptSafeMarketPack, openingFingerprint, maxRecentOpeningSimilarity, resolveEditorialDecision };

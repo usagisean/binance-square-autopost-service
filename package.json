@@ -10,7 +10,8 @@
     "publish-once": "node src/cli.js publish",
     "preview:editorial": "node scripts/preview-editorial-fixtures.js",
     "test:prompt": "node scripts/test-prompt-fixtures.js",
-    "test": "npm run test:prompt && npm run test:quality",
+    "test": "npm run test:prompt && npm run test:quality && npm run test:editorial",
+    "test:editorial": "node scripts/test-editorial-refresh.js",
     "test:quality": "node scripts/test-quality-fixtures.js"
   },
   "engines": {

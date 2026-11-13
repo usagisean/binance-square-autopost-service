@@ -193,7 +193,7 @@
       <label><input type="checkbox" id="enableImagePosts">启用图片发帖（最多 4 张；默认关闭，关闭时仍纯文本发布）</label>
       <label><input type="checkbox" id="autoGenerateImage">自动生成行情配图（LIVE 会按日内剩余额度随机分布；达到上限后自动改回纯文本）</label>
       <div class="grid3"><div><label>每日自动生成图上限（建议 20）</label><input id="autoImageMaxDaily" type="number" min="0" max="100" value="20"></div><div><label>配图策略</label><select id="imagePostMode"><option value="off">不配图</option><option value="static">固定图片路径</option><option value="random">从素材库随机配图</option><option value="rotate">从素材库轮流配图</option></select></div><div><label>每帖图片数</label><input id="imagePathCount" type="number" min="1" max="4" value="1"></div></div>
-      <label><input id="evidenceImagesOnly" type="checkbox"> 只发布有真实衍生品证据的图片（推荐；不再用普通K线凑图）</label>
+      <label><input id="evidenceImagesOnly" type="checkbox"> 只发布与正文相关、数据完整的证据图（推荐；缺少真实数据时纯文字发布）</label>
       <label>固定图片路径（每行一个；相对 VPS 容器 /app/data，或绝对路径）</label><textarea id="imagePaths" class="small-textarea" placeholder="images/test.png"></textarea>
       <label><input type="checkbox" id="preferSquareTagSymbols">优先选择更容易被 Square 识别出底部币种卡片的币</label>
       <label><input type="checkbox" id="dynamicUniverse">动态市场发现（推荐）：从 Binance 全部可交易 USDT 市场选主角，不受下方自定义池限制</label>

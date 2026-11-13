@@ -51,9 +51,28 @@ function contentEvidenceInstruction(pack = {}) {
   else {
     lines.push(`已收盘量能与区间：${JSON.stringify(evidence)}`);
     lines.push('引用量比时必须说清“最近已收盘 1h / 前 4h 每小时均值”；不要与正在形成的 1h 涨跌混为同一时间窗。');
+    if (finite(evidence.volumeRatio)) lines.push(`量比口径：${evidence.volumeRatio} 倍 = ${Number((evidence.volumeRatio * 100).toFixed(2))}%，不能把倍数直接加上百分号。正文可用“上一小时成交是此前四小时均量的 X 倍”等自然表达，不要照抄字段名。`);
   }
+  lines.push('以上是内部事实边界，不是每篇必须照抄的免责声明。只在本轮确实容易误解的地方解释一句，不要固定复读“量能不等于净流入、只是旁证、不代表全市场”。');
   lines.push('非方向卡可省略价位。若引用价位，优先使用已收盘区间高低并说明时间窗；计算触发价只是模型参考，不得称为市场已验证的关键支撑、阻力或赔率开关。');
   return lines.join('\n');
 }
 
-module.exports = { buildContentEvidence, contentEvidenceInstruction, finite };
+function validateVolumeRatioText(text, evidence = {}) {
+  if (!evidence?.available || !finite(evidence.volumeRatio)) return [];
+  const expected = Number(evidence.volumeRatio);
+  for (const sentence of String(text || '').split(/[。！？；\n]/)) {
+    if (!/(成交量|量比|量能|均量)/.test(sentence)) continue;
+    const pattern = /(?:均值|均量|平均值|基准|量比)\s*(?:的|为|是|达到|只有|仅为|约为|约|仅|大约|\s)*([0-9]+(?:\.[0-9]+)?)\s*(倍|[%％])/g;
+    for (const match of sentence.matchAll(pattern)) {
+      const scale = match[2] === '倍' ? 1 : 100;
+      const actual = Number(match[1]) / scale;
+      const decimals = (match[1].split('.')[1] || '').length;
+      const tolerance = Math.max(0.005, 0.5 * 10 ** -decimals / scale, Math.abs(expected) * 0.02);
+      if (Math.abs(actual - expected) > tolerance + 1e-9) return ['volume_ratio_value_or_unit_mismatch'];
+    }
+  }
+  return [];
+}
+
+module.exports = { buildContentEvidence, contentEvidenceInstruction, validateVolumeRatioText, finite };
